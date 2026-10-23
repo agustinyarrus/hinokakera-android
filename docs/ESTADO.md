@@ -94,9 +94,58 @@ la app no puede entrar a sus subcarpetas: los datos de prueba van siempre dentro
 **Depuración**: `HINO_LOG_DIBUJOS=cuadros` (cada llamada: 2D/3D, caja en pantalla, textura, destino),
 `HINO_LOG_VS=1` (fuente de los vertex shaders), `HINO_LOG_ARCHIVOS=1` (aperturas de archivos).
 
-**Sin probar**: teléfono real (rendimiento en ARM nativo, sonido), juego en red, multitáctil real (el emulador solo
+**Sin probar** (en ese momento; el teléfono real quedó probado en la entrada 4): juego en red, multitáctil real (el emulador solo
 manda un dedo), todas las pantallas del modo historia y extras.
 
 **Ideas**
 - HUD de la pelea repartido a los bordes (hoy queda centrado con el marco extendido).
 - Fondos de la historia: el reflejo se nota en algunas imágenes; un desenfoque de los costados lo disimularía.
+
+## 2026-10-23 (4) — teléfono real: candado del invitado y pantalla al tamaño real
+
+**Hecho**
+- Probado en un **Samsung Galaxy A52** (SM-A525M, Android 14, Adreno 618, 2400×1080) por adb inalámbrico: 60 fps.
+- **Cuelgue solo en ARM real**: SIGSEGV en el hilo de la música (decodificador Vorbis del juego, `f_0040fc30` →
+  `f_004c6350`), que no salía en la PC ni en el emulador ni frenando lecturas (`HINO_LENTO=ms` en
+  `k32_archivos.c` demora `ReadFile` en los hilos secundarios). El juego cuenta con el orden de memoria de x86 (TSO)
+  y en ARM un hilo leía datos a medio escribir. Arreglo: **candado del invitado** (`runtime/hilo.c`, turnos con
+  mutex y condición): corre un solo hilo del juego a la vez; se suelta alrededor de `Sleep`, esperas, secciones
+  críticas ocupadas, `GetMessage`, `recvfrom` y el `SwapWindow`, y `PeekMessage` cede el turno. En el A52 aguantó
+  casi 8 minutos seguidos (27.900 cuadros) sin cortes; en la PC los cuadros de la pelea salen iguales que antes.
+- La ventana arrancaba más chica (2186×1017) antes de pasar a 2400×1080 y quedaban bordes negros: `ancho_ajustar`
+  rearma el backbuffer después de cada `SwapWindow` si cambió el tamaño.
+- Repo público `github.com/agustinyarrus/hinokakera-android`: código, documentación y capturas; sin el juego, sin
+  su código traducido (`gen/`) y sin el APK, que lo llevan adentro.
+
+## 2026-10-23 (5) — Outskirt Hill de noche (estilo Moonlit Wilderness)
+
+**Hecho**
+- `node tools/escenario/moonlit.mjs [--png carpeta]` arma `_scratch/hino-android/mods/vsobj2.dat`: el parche del
+  juego más 20 archivos nuevos. El juego busca primero en `vsobj2.dat` (tabla unida, gana el primero), así que el
+  escenario cambia sin tocar el exe; `tools/datos.mjs` toma lo de `mods/` antes que los archivos del juego.
+- Formatos (con REA): `dat/field.dat` (cargador en 0x4984b0, `tools/escenario/campo.mjs`): por escenario, la lista
+  de modelos con tipo de vértice (0 xyz+normal, 1 +uv, 2 xyz, 3 xyz+uv; los 0/1 se iluminan), Z, escribe Z, mezcla
+  (0x403ad0: 2 alfa, 3 aditiva) y prueba alfa; efecto de partículas (1 polvo del desierto, 3 motas blancas), luz
+  difusa/ambiente/dirección y viento (mueve ropa y pelo). El modelo 0 es el piso: su textura se corre con la pelea.
+  Todos los modelos siguen el centro de la pelea: el escenario es un diorama alrededor de los peleadores y al
+  arrancar la ronda la cámara mira a +Z, ~5,7 unidades atrás, con ~30° de FOV vertical. En `nmd_`, los floats
+  0–3 del material son el color (constante c4 del shader), el 4 activa una pasada especular (0 = no), y `ini`/`n`
+  cuentan triángulos. `BMA_` es ARGB sin paleta.
+- Lo que tiene: domo de cielo (panorama de 4096×1024 en dos mitades, la elevación no lineal para que la franja que
+  ve la cámara tenga resolución), luna con halo (mezcla alfa), piso y lomas pasados a noche desde los originales,
+  montes con filo de luna y ruinas lejanas en vez de la ciudad, árboles secos (carteles y 3D), cortaderas (las
+  tiras de pasto del original, 3 veces más altas, y 200 matas entre r 13,2 y 17,5 en tres tonos, dibujadas de
+  afuera hacia adentro porque no escriben Z), ruinas góticas en una loma (arcadas de arco apuntado, torre, ala
+  caída, arco suelto y escombros; iluminadas), monolito vencido, luz de luna azulada y el efecto 3 como pelusa.
+- Miniatura de la selección de escenario (cuarta franja de `tex_sys42`): la renderiza `tools/escenario/vista.mjs`,
+  un rasterizador por software con las mismas banderas del juego; `tools/escenario/ver.mjs <n> <png> [--sin m]
+  [--sintex t]` muestra cualquier escenario sin correr el juego. `npm test` prueba las herramientas.
+
+**Trampas**
+- El corte de orejas se trababa con puntos repetidos o alineados (los escalones del borde roto) y dejaba caras sin
+  tapar: `limpiar()` antes de triangular.
+- Dos tiras en la misma textura se contaminan por el filtrado: el pie de una aparecía como rayitas arriba de la
+  otra. Van con margen transparente.
+- Los píxeles casi transparentes de los montes originales eran blancos y no se veían; pasados a azul oscuro eran
+  rayitas en el cielo: se corta el alfa bajo.
+- Los períodos del ruido tienen que ser enteros o el panorama no empalma.

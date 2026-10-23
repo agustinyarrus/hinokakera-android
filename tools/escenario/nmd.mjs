@@ -21,3 +21,28 @@ export function leerNmd(b) {
   m.fin = p;
   return m;
 }
+
+// Inverso de leerNmd. mat.ini y mat.n cuentan triángulos (el ini de cada material es la suma de los anteriores).
+export function escribirNmd(m) {
+  const partes = [Buffer.from('nmd_', 'latin1')];
+  const str = (s) => { const b = Buffer.from(s, 'latin1'); partes.push(Buffer.from([b.length]), b); };
+  const num = (f, vs) => { const b = Buffer.alloc(4 * vs.length); vs.forEach((v, i) => f.call(b, v, 4 * i)); partes.push(b); };
+  const u32 = (...vs) => num(Buffer.prototype.writeUInt32LE, vs.map((v) => v >>> 0));
+  str(m.nombre);
+  u32(m.mats.length, m.vs.length, m.is.length, m.is.length / 3);
+  for (const mat of m.mats) {
+    str(mat.nombre || '');
+    num(Buffer.prototype.writeFloatLE, mat.col);
+    str(mat.tex);
+    u32(mat.ini, mat.n);
+  }
+  const v = Buffer.alloc(36 * m.vs.length);
+  m.vs.forEach((x, i) => {
+    [...x.p, ...x.n].forEach((f, k) => v.writeFloatLE(f, 36 * i + 4 * k));
+    v.writeUInt32LE(x.c >>> 0, 36 * i + 24); v.writeFloatLE(x.uv[0], 36 * i + 28); v.writeFloatLE(x.uv[1], 36 * i + 32);
+  });
+  const ix = Buffer.alloc(2 * m.is.length);
+  m.is.forEach((k, i) => ix.writeUInt16LE(k, 2 * i));
+  partes.push(v, ix);
+  return Buffer.concat(partes);
+}

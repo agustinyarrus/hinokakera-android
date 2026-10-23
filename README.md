@@ -33,6 +33,25 @@ cámara 3D abre a los costados, sin estirar nada. Las pantallas 2D de 4:3 se rea
 
 ![Selección de personaje a lo ancho](docs/img/seleccion-ancho.jpg)
 
+## Escenario nuevo: Outskirt Hill de noche
+
+![Pelea en Outskirt Hill de noche](docs/img/noche-pelea.jpg)
+
+Outskirt Hill rehecho al estilo de Moonlit Wilderness (Tekken 7): luna llena, ruinas góticas en una loma, árbol
+seco, monolito vencido, un campo de cortaderas y pelusa flotando. Todo sale de código en `tools/escenario/`: el
+cielo, la luna, las cortaderas y la piedra se pintan proceduralmente, las ruinas y los árboles se modelan en 3D, y el
+pasto y los montes del original se pasan a noche. Se arma un `vsobj2.dat` nuevo (el juego lo busca antes que el
+resto), sin tocar el ejecutable, y también cambia la miniatura de la selección de escenario.
+
+![El escenario sin HUD, renderizado por software](docs/img/noche-escenario.jpg)
+
+```sh
+node tools/escenario/moonlit.mjs        # genera _scratch/hino-android/mods/vsobj2.dat desde tu copia del juego
+node tools/apk.mjs --datos --release    # el APK sale con el escenario nuevo
+node tools/escenario/ver.mjs 3 vista.png  # mirar un escenario sin correr el juego (la imagen de arriba)
+npm test                                # prueba las herramientas de escenarios
+```
+
 ## Qué tan fiel es
 
 ![Original, port en Android y diferencias](docs/img/fidelidad.jpg)

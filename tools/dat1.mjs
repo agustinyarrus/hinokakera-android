@@ -22,7 +22,7 @@ export function leerDat1(buf) {
   return entradas;
 }
 
-if (import.meta.url === `file:///${process.argv[1].replaceAll('\\', '/')}`) {
+if (import.meta.url === `file:///${process.argv[1]?.replaceAll('\\', '/')}`) {
   const [cmd, archivo, destino] = process.argv.slice(2);
   const buf = readFileSync(archivo);
   const entradas = leerDat1(buf);
@@ -41,4 +41,18 @@ if (import.meta.url === `file:///${process.argv[1].replaceAll('\\', '/')}`) {
     console.error('uso: dat1.mjs list|extract <archivo.dat> [destino]');
     process.exit(2);
   }
+}
+
+// Inverso de leerDat1: [{nombre, datos}] -> contenedor (nombres con su NUL, offsets absolutos).
+export function escribirDat1(entradas) {
+  const nombres = entradas.map((e) => Buffer.from(e.nombre + '\0', 'latin1'));
+  let off = 8 + nombres.reduce((s, n) => s + 12 + n.length, 0);
+  const t = Buffer.alloc(off);
+  t.write('dat1', 0, 'latin1'); t.writeUInt32LE(entradas.length, 4);
+  let p = 8;
+  entradas.forEach((e, i) => {
+    t.writeUInt32LE(nombres[i].length, p); nombres[i].copy(t, p + 4); p += 4 + nombres[i].length;
+    t.writeUInt32LE(off, p); t.writeUInt32LE(e.datos.length, p + 4); p += 8; off += e.datos.length;
+  });
+  return Buffer.concat([t, ...entradas.map((e) => e.datos)]);
 }
