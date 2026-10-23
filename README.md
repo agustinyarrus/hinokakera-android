@@ -1,5 +1,10 @@
 # hinokakera-android
 
+<p align="center">
+  <img src="docs/img/android-demo.gif" width="600" alt="Hinokakera Chaotic Eclipse corriendo en un Galaxy A52">
+  <br><sub>En un Samsung Galaxy A52 (2400×1080, 20:9): pantalla completa sin bordes, controles táctiles, 60 fps.</sub>
+</p>
+
 Port a Android (y a Windows moderno) de **Hinokakera Chaotic Eclipse** v1.01 (Reddish Region, 2010), un juego de
 lucha 3D para Direct3D 9, por **recompilación estática**: el `.exe` original se traduce instrucción por instrucción
 de x86 a C, y lo único que se reescribe son las DLL de Windows que usa (kernel32, user32, gdi32, winmm, dsound,
@@ -8,7 +13,29 @@ dinput8, ws2_32, d3d9, d3dx9) sobre SDL3 y OpenGL ES 3. La lógica, la IA, los c
 > El repo **no incluye el juego**: ni el ejecutable, ni su código traducido, ni sus datos. Hace falta una copia
 > propia de Hinokakera Chaotic Eclipse v1.01 para generar todo (ver más abajo).
 
+## En el celu
+
+| | |
+|---|---|
+| ![Pantalla de título](docs/img/celu-titulo.jpg) | ![Ready en Outskirt Hill](docs/img/celu-ready.jpg) |
+| Título, con los controles táctiles encima | Outskirt Hill a 20:9: el 3D muestra más escenario |
+| ![Pelea en Wasteland](docs/img/celu-pelea.jpg) | ![Combo con efectos](docs/img/celu-efectos.jpg) |
+| Wasteland | Combos y efectos a 56–60 fps (Adreno 618) |
+| ![Modo historia](docs/img/historia.jpg) | ![Pausa](docs/img/pausa.jpg) |
+| Modo historia: el fondo 4:3 se extiende por reflejo y se toca la pantalla para avanzar | El botón Atrás pausa (Law Board) |
+
+## Pantalla ancha, sin bordes negros
+
+![El original a 4:3 contra el port a 1332×600](docs/img/ancho-vs-original.jpg)
+
+El mismo cuadro de pelea en el original y en el port a lo ancho: el HUD y lo 2D quedan a 1:1 en el centro y la
+cámara 3D abre a los costados, sin estirar nada. Las pantallas 2D de 4:3 se rearman para llenar el ancho:
+
+![Selección de personaje a lo ancho](docs/img/seleccion-ancho.jpg)
+
 ## Qué tan fiel es
+
+![Original, port en Android y diferencias](docs/img/fidelidad.jpg)
 
 Se compara el backbuffer contra el del juego original corriendo en Windows (con un `d3d9.dll` espía,
 `tools/c/d3d9_espia.c`) en los mismos cuadros y con las mismas teclas (`dinput8.dll` espía):
@@ -17,9 +44,10 @@ Se compara el backbuffer contra el del juego original corriendo en Windows (con 
 |---|---|---|
 | Título y menús | **100 %** de píxeles idénticos | 99,978 % (±1 en un texto) |
 | Selección de personaje | — | 95,4 % (máx ±2) |
-| Pelea (cuadros 700–2000) | 98,4–99,7 % (lo distinto es el contador de FPS) | 94–96,5 % |
+| Pelea (cuadros 700–2000) | 98,4–99,7 % (el contador de FPS y ±1 de redondeo en los personajes) | 94–96,5 % |
 
-La pelea avanza cuadro por cuadro igual que el original en x86 y en ARM (sin FMA: `-ffp-contract=off`).
+La pelea avanza cuadro por cuadro igual que el original en x86 y en ARM (sin FMA: `-ffp-contract=off`). En un
+Galaxy A52 real corrió casi 8 minutos seguidos (27.900 cuadros) sin cortes.
 
 ## Cómo funciona
 
@@ -59,7 +87,8 @@ node tools/apk.mjs --datos --release               # APK con el juego adentro
 
 La carpeta del juego se toma de `HINO_JUEGO` (por defecto, `../hinokakera/04_.../Game_Chaotic_Eclipse_v101_Unpacked`).
 La bitácora completa, con cómo probar en el emulador y depurar, está en [`docs/ESTADO.md`](docs/ESTADO.md); la
-decisión de diseño, en [`docs/PLAN.md`](docs/PLAN.md).
+decisión de diseño, en [`docs/PLAN.md`](docs/PLAN.md). `tools/escenario/` lee y escribe los modelos (`nmd_`) y las
+texturas (`BMT_`) del juego, para editar escenarios.
 
 ## Variables útiles
 
@@ -69,4 +98,5 @@ decisión de diseño, en [`docs/PLAN.md`](docs/PLAN.md).
 
 ## Licencia
 
-El código de este repo es MIT. Hinokakera Chaotic Eclipse pertenece a Reddish Region.
+El código de este repo es MIT. Hinokakera Chaotic Eclipse pertenece a Reddish Region; las capturas de `docs/img/`
+son del juego y están solo para mostrar el port.
