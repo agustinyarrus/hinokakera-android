@@ -1,0 +1,63 @@
+plugins { id 'com.android.application' }
+
+def scratch = new File(rootDir, '../../_scratch/hino-android')
+// -Pdatos=<carpeta>: el juego va dentro del APK (~730 MB). Sin eso sale un APK chico sin el juego (para ver
+// que compila).
+def datos = findProperty('datos')
+def abis = (findProperty('abis') ?: 'arm64-v8a,x86_64').split(',')
+
+android {
+    namespace 'ar.box.hinokakera'
+    compileSdk 35
+    buildToolsVersion '35.0.0'
+    ndkVersion '28.2.13676358'
+    defaultConfig {
+        applicationId 'ar.box.hinokakera'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '1.01'
+        ndk { abiFilters(*abis) }
+    }
+    // Clave propia del proyecto (no la de debug de _scratch): las actualizaciones se instalan encima sin
+    // perder las partidas guardadas.
+    signingConfigs {
+        propia {
+            storeFile file('../hino.keystore')
+            storePassword 'android'
+            keyAlias 'hino'
+            keyPassword 'android'
+        }
+    }
+    buildTypes {
+        debug { signingConfig signingConfigs.propia }
+        release { signingConfig signingConfigs.propia }
+    }
+    lint { checkReleaseBuilds false }
+    buildFeatures { prefab true }
+    externalNativeBuild {
+        cmake {
+            path 'CMakeLists.txt'
+            version '3.31.6'
+            buildStagingDirectory new File(scratch, 'cxx')
+        }
+    }
+    sourceSets.main.assets.srcDir(layout.buildDirectory.dir('recursos'))
+    if (datos) sourceSets.main.assets.srcDir(datos)
+    // Los .dat se leen con saltos (SetFilePointer): comprimidos, cada salto atrás descomprimiría de nuevo.
+    androidResources { noCompress 'dat', 'ogg' }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+tasks.register('recursos', Copy) {
+    from('../../gen') { include 'imagen.bin', 'glifos.bin' }
+    into(layout.buildDirectory.dir('recursos'))
+}
+tasks.named('preBuild') { dependsOn 'recursos' }
+
+dependencies {
+    implementation files('../../terceros/sdl3-android/SDL3-3.4.18.aar')
+}

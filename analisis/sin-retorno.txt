@@ -1,0 +1,11 @@
+# Funciones que no vuelven y que el análisis estructural no puede deducir (tienen ret, pero no se llega).
+# Nombres de Ghidra (FID) o identificadas a mano. Formato: dirección hex y comentario.
+4a19c0 exit (llama a doexit; el ret existe pero nunca se ejecuta)
+4a19e0 _exit
+4a24d0 _amsg_exit
+4a5ed0 _CxxThrowException@8
+4ab7de abort
+4b6240 abort
+501033 AfxThrowResourceException
+4ebae0 CFileException::ThrowOsError
+4ebb04 CFileException::ThrowErrno

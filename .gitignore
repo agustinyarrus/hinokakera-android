@@ -1,0 +1,19 @@
+# Lo que sale del juego original no se publica (es de Reddish Region): se regenera desde una copia propia.
+gen/
+datos/
+apk/
+run/
+android/app/src/main/res/mipmap-*/ic_launcher.png
+
+# Generado y de terceros
+build/
+obj/
+node_modules/
+terceros/
+android/.gradle/
+android/app/.cxx/
+android/local.properties
+
+# Claves de firma
+*.keystore
+*.jks

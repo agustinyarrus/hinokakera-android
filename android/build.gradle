@@ -1,0 +1,10 @@
+plugins {
+    id 'com.android.application' version '8.9.2' apply false
+}
+
+// Lo que genera Gradle va a Box/_scratch, no al proyecto.
+def scratch = new File(rootDir, '../../_scratch/hino-android/build')
+layout.buildDirectory.set(new File(scratch, 'root'))
+subprojects {
+    layout.buildDirectory.set(new File(scratch, project.name))
+}

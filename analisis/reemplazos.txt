@@ -1,0 +1,4 @@
+# Funciones del CRT que se reemplazan por una implementación nativa (runtime/hle.c) en vez de traducirlas.
+# Son rutinas de biblioteca con semántica conocida; las de VC6 en ensamblador saltan por tablas internas.
+4a4890 hle_memmove  memcpy de VC6 (resuelve solapamiento como memmove)
+4a5120 hle_memmove  memmove de VC6

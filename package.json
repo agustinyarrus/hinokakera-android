@@ -1,0 +1,9 @@
+{
+  "name": "hinokakera-android",
+  "private": true,
+  "type": "module",
+  "description": "Port de Hinokakera Chaotic Eclipse a Android por recompilación estática del ejecutable original",
+  "dependencies": {
+    "iced-x86": "^1.21.0"
+  }
+}
