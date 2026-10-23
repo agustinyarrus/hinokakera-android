@@ -1,5 +1,5 @@
 // Renderiza un escenario de field.dat sin correr el juego:
-//   node tools/escenario/ver.mjs <n> <salida.png> [--sin mod_x,...] [--sintex tex_x.bmt,...]
+//   node tools/escenario/ver.mjs <n> <salida.png> [--sin mod_x,...] [--sintex tex_x.bmt,...] [--cam x,y,z,rumbo,cabeceo,fov]
 // Busca los archivos como el juego (mods/vsobj2.dat si existe, después vsobj2, vsobj y vsdat de la copia del juego).
 import { openSync, readSync, closeSync, existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -36,10 +36,11 @@ const leerTex = (n) => {
 
 const [n, salida] = process.argv.slice(2), sin = process.argv.includes('--sin') ? process.argv[process.argv.indexOf('--sin') + 1].split(',') : [];
 const sinTex = process.argv.includes('--sintex') ? process.argv[process.argv.indexOf('--sintex') + 1].split(',') : [];
+const cam = process.argv.includes('--cam') ? process.argv[process.argv.indexOf('--cam') + 1].split(',').map(Number) : [0, 0.5, -5.7, 90, 0, 30.6];
 const e = leerCampo(sacar('dat/field.dat'))[+n];
 const modelos = e.modelos.filter((m) => !sin.includes(m.nombre.replace('.nmd', ''))).map((m) => { const nmd = leerNmd(sacar(`obj/${m.nombre}`)); nmd.mats = nmd.mats.filter((t) => !sinTex.includes(t.tex)); return { ...m, nmd }; });
 const cache = new Map(), texturas = (t) => (cache.has(t) ? cache.get(t) : cache.set(t, leerTex(t)).get(t));
-const W = 1332, H = 600, img = vista({ w: W, h: H, modelos, texturas, luz: { difusa: e.difusa, ambiente: e.ambiente, dir: e.dir }, cam: { pos: [0, 0.5, -5.7], rumbo: 90, cabeceo: 0, fovV: 30.6 } });
+const W = 1332, H = 600, img = vista({ w: W, h: H, modelos, texturas, luz: { difusa: e.difusa, ambiente: e.ambiente, dir: e.dir }, cam: { pos: cam.slice(0, 3), rumbo: cam[3], cabeceo: cam[4], fovV: cam[5] } });
 const L = new Lienzo(W, H);
 for (let i = 0; i < W * H; i++) L.d.set([Math.min(1, img[3 * i]), Math.min(1, img[3 * i + 1]), Math.min(1, img[3 * i + 2]), 1], 4 * i);
 writeFileSync(salida, L.png());

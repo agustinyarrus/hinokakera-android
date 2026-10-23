@@ -325,24 +325,28 @@ function pano(x0, x1, y0, vano, techo) {
 }
 const sobreVano = (v, margen) => (x) => (v && Math.abs(x - v.xc) < v.a + 0.3 ? v.ha + margen : -1e9);
 
+// Los muros arrancan bajo tierra (cimientos): así no flotan donde la loma baja.
+const PIE = -5;
+
 // Muro con arcada abajo y ventana alta donde el muro todavía llega; bahias: [{x0, x1, alto: [h0, h1]}].
 function muro(M, g, bahias, grosor, xf, rnd, arcada = { a: 1.05, hs: 2.7, ha: 4.1 }, alta = { a: 0.45, hs: 6.1, ha: 6.9, desde: 5 }) {
   for (const b of bahias) {
     const xc = (b.x0 + b.x1) / 2, v1 = b.sinArco ? null : { xc, ...arcada }, maxAlto = Math.max(...b.alto);
     if (maxAlto <= alta.desde + 0.6) {
-      M.extruir(g, pano(b.x0, b.x1, 0, v1, techoRoto(b.x0, b.x1, b.alto[0], b.alto[1], rnd, sobreVano(v1, 0.5))), grosor, xf);
+      M.extruir(g, pano(b.x0, b.x1, PIE, v1, techoRoto(b.x0, b.x1, b.alto[0], b.alto[1], rnd, sobreVano(v1, 0.5))), grosor, xf);
       continue;
     }
-    M.extruir(g, pano(b.x0, b.x1, 0, v1, [[b.x1, alta.desde], [b.x0, alta.desde]]), grosor, xf);
+    M.extruir(g, pano(b.x0, b.x1, PIE, v1, [[b.x1, alta.desde], [b.x0, alta.desde]]), grosor, xf);
     const v2 = maxAlto > alta.ha + 0.6 ? { xc, ...alta } : null;
     M.extruir(g, pano(b.x0, b.x1, alta.desde, v2, techoRoto(b.x0, b.x1, b.alto[0], b.alto[1], rnd, sobreVano(v2, 0.4))), grosor, xf);
   }
 }
 
-// Loma bajo el castillo (unidades del escenario): elipse de radios rr (hacia el centro) y rt (de costado).
+// Loma bajo el castillo (unidades del escenario): elipse de radios rr (hacia el centro) y rt (de costado), con la
+// cima plana donde apoya el castillo. Devuelve la altura de la cima y la del suelo en cada punto (x, z).
 function loma(M, g, centro, ang, rr, rt, alto, base) {
   const n = 22, lados = 48, ids = [], dirR = [Math.cos(ang), 0, Math.sin(ang)], dirT = [-Math.sin(ang), 0, Math.cos(ang)];
-  const altura = (u, v) => { const d = Math.hypot(u / rr, v / rt); return d >= 1 ? base : base + (alto - base) * (1 - d * d) ** 2 * (1 + 0.12 * fbm(u * 0.4, v * 0.4, 3, 61)); };
+  const altura = (u, v) => base + (alto - base) * (1 - suave(0.42, 1, Math.hypot(u / rr, v / rt))) * (1 + 0.05 * fbm(u * 0.4, v * 0.4, 3, 61));
   const pos = (u, v) => [centro[0] + dirR[0] * u + dirT[0] * v, altura(u, v), centro[2] + dirR[2] * u + dirT[2] * v];
   for (let i = 0; i <= n; i++) {
     const fila = [];
@@ -360,14 +364,14 @@ function loma(M, g, centro, ang, rr, rt, alto, base) {
     const cr = cruz(resta(M.vs[b].p, M.vs[a].p), resta(M.vs[c].p, M.vs[a].p)); // que la cara mire para arriba
     if (cr[1] >= 0) g.tris.push(a, b, c, a, c, d); else g.tris.push(a, c, b, a, d, c);
   }
-  return altura(0, 0);
+  return { cima: altura(0, 0), suelo: (x, z) => altura((x - centro[0]) * dirR[0] + (z - centro[2]) * dirR[2], (x - centro[0]) * dirT[0] + (z - centro[2]) * dirT[2]) };
 }
 
 const SIN_BRILLO = [0, 0, 0, 0, 0, 0, 0, 0, 0]; // como los modelos iluminados del juego (sin pasada especular)
 function castillo() {
   const M = new Malla(), piedraG = M.material('tex_f098.bmt', [1, 1, 1, 1], SIN_BRILLO), pastoG = M.material('tex_f094.bmt', [1, 1, 1, 1], SIN_BRILLO);
   const rnd = azar(77), th = CASTILLO.ang * RAD, centro = [CASTILLO.dist * Math.cos(th), 0, CASTILLO.dist * Math.sin(th)];
-  const cima = loma(M, pastoG, centro, th, 7.5, 12, 2.3, -0.9);
+  const { cima, suelo } = loma(M, pastoG, centro, th, 9, 14, 2.3, -0.9);
   // marco del castillo: x a lo largo del frente, z hacia la pelea; escala 0.55 (medidas en "metros" de diseño)
   const giro = Math.atan2(-Math.cos(th), -Math.sin(th)) + 22 * RAD, s = 0.55, base = [centro[0], cima - 0.25, centro[2]];
   const enCastillo = (rot, off) => (x, y, z) => {
@@ -381,10 +385,12 @@ function castillo() {
   // ala izquierda que se va hacia atrás, más derrumbada
   muro(M, piedraG, [{ x0: 0, x1: 3.6, alto: [4.2, 3.4] }, { x0: 3.6, x1: 7.2, alto: [3.0, 1.6] }], 0.9, enCastillo(Math.PI - 62 * RAD, [-7, 0, 0]), rnd, { a: 0.9, hs: 2.2, ha: 3.2 });
   // arco suelto adelante
-  M.extruir(piedraG, pano(-2, 2, 0, { xc: 0, a: 1.15, hs: 2.6, ha: 3.9 }, arcoPuntiagudo(0, 2, 2.6, 4.8, 10).reverse()), 0.9, enCastillo(-12 * RAD, [-1.5, 0, 5.5]));
+  M.extruir(piedraG, pano(-2, 2, PIE, { xc: 0, a: 1.15, hs: 2.6, ha: 3.9 }, arcoPuntiagudo(0, 2, 2.6, 4.8, 10).reverse()), 0.9, enCastillo(-12 * RAD, [-1.5, 0, 5.5]));
   for (let i = 0; i < 22; i++) { // escombros
     const a = rnd() * 2 * Math.PI, r = 2 + rnd() * 7, lado = 0.3 + rnd() * 0.8, rot = rnd() * Math.PI;
-    M.caja(piedraG, -lado / 2, -lado * 0.3, lado / 2, lado * (0.4 + rnd() * 0.5), lado * (0.6 + rnd() * 0.6), enCastillo(rot, rotY([Math.cos(a) * r, 0, Math.sin(a) * r + 1.5], -rot)));
+    const off = rotY([Math.cos(a) * r, 0, Math.sin(a) * r + 1.5], -rot), [wx, , wz] = enCastillo(rot, off)(0, 0, 0);
+    off[1] = (suelo(wx, wz) - base[1]) / s; // donde la loma baja, el escombro baja con ella
+    M.caja(piedraG, -lado / 2, -lado * 0.3, lado / 2, lado * (0.4 + rnd() * 0.5), lado * (0.6 + rnd() * 0.6), enCastillo(rot, off));
   }
   monolito(M, piedraG);
   return M;
