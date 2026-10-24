@@ -122,9 +122,9 @@ static void palabra(Rect r, float x, float y, float alfa) {
   pedazo(T_RED, (float)r.x, (float)r.y, (float)r.w, (float)r.h, x, y, (float)r.w, (float)r.h, c);
 }
 
-// La letra de los nombres (sala.txt) y las ayudas ya armadas.
+// La letra de los nombres (sala.txt).
 typedef struct { int ax, ay, w, h, cx, cy; float sw; } Letra;
-static Letra letras[128], frases[8];
+static Letra letras[128];
 static float separacion = 0.5f, espacio = 8;
 static float ancho_letras(const char *s, float k) {
   float x = 0;
@@ -147,12 +147,9 @@ static float escribir(const char *s, float x, float base, float k, const float c
   }
   return x;
 }
-enum { AY_PLAY, AY_SERVER, AY_DELAY, AY_START, AY_CANCEL, AY_PLAYER, AY_DONE };
-static void ayuda(int id, int linea) { // arriba a la derecha, donde van las del juego (x 552, líneas cada 20)
-  const Letra *f = &frases[id];
-  if (!f->w) return;
-  pedazo(T_LETRAS, (float)f->ax, (float)f->ay, (float)f->w, (float)f->h, 552.0f + (float)f->cx, 36.0f + 20.0f * (float)linea + (float)f->cy, (float)f->w, (float)f->h, BLANCO);
-}
+#define PUNTOS "\xb7\xb7\xb7" // "Button C···Create Room", como las ayudas del juego
+static const float BLANCO_AYUDA[4] = {1, 1, 1, 1};
+static void ayuda(const char *t, int linea) { escribir(t, 552, 36.0f + 20.0f * (float)linea, 0.8f, BLANCO_AYUDA); } // arriba a la derecha
 
 // MS Gothic de 24 con la matriz {2,0,0,1} del juego (glifos al doble de ancho, dibujados a la mitad), como su texto.
 #define GOT_ALTO 24
@@ -240,22 +237,20 @@ static const char *FS =
 static void leer_medidas(void) {
   size_t n = 0;
   char *t = (char *)de_dat("obj/sala.txt", &n);
-  int nl = 0, nf = 0, en_frases = 0;
+  int nl = 0;
   for (char *l = t, *sig; l && *l; l = sig) {
     sig = strchr(l, '\n');
     if (sig) *sig++ = 0;
     int c, ax, ay, w, h, cx, cy;
     float sw;
     if (sscanf(l, "letras %d %f %f", &c, &separacion, &espacio) == 3) continue;
-    if (!strncmp(l, "frases", 6)) { en_frases = 1; continue; }
-    if (sscanf(l, "%d %d %d %d %d %d %d %f", &c, &ax, &ay, &w, &h, &cx, &cy, &sw) != 8) { if (!sig) break; continue; }
-    Letra g = {ax, ay, w, h, cx, cy, sw};
-    if (en_frases && c >= 0 && c < (int)SDL_arraysize(frases)) { frases[c] = g; nf++; }
-    else if (!en_frases && c > 0 && c < 256) { letras[c == 0xb7 ? '`' : c & 127] = g; nl++; }
-    if (!sig) break;
+    if (sscanf(l, "%d %d %d %d %d %d %d %f", &c, &ax, &ay, &w, &h, &cx, &cy, &sw) == 8 && c > 0 && c < 256) {
+      letras[c == 0xb7 ? '`' : c & 127] = (Letra){ax, ay, w, h, cx, cy, sw};
+      nl++;
+    }
   }
   free(t);
-  fprintf(stderr, "sala: %d letras y %d ayudas del juego\n", nl, nf);
+  fprintf(stderr, "sala: %d letras del juego\n", nl);
 }
 
 static void crear_gl(void) {
@@ -345,33 +340,48 @@ static void leer_botones(int letras_son_botones) {
 }
 
 // ---------------- pantallas ----------------
-static int sel, editando, campo, toque_fila = -2, toque_previo;
-static char edicion[2][64];
+// Formularios con el teclado (en Android, el de pantalla): ajustes (nombre y servidor), crear sala (nombre y clave) y
+// la clave de una sala privada.
+enum { F_NADA, F_AJUSTES, F_CREAR, F_CLAVE };
+static int form, campo, n_campos, sala_clave, sel, toque_fila = -2, toque_previo;
+static char valor[2][64];
+static size_t limite[2];
 static SDL_Window *ventana;
 static void (*oyente_anterior)(const SDL_Event *e);
 
-static void editar(int si) {
-  editando = si;
-  if (si) {
-    SDL_strlcpy(edicion[0], salas.nombre, sizeof edicion[0]);
-    SDL_strlcpy(edicion[1], salas.servidor, sizeof edicion[1]);
+static void abrir(int f) {
+  form = f;
+  campo = 0;
+  memset(valor, 0, sizeof valor);
+  if (f == F_AJUSTES) {
+    n_campos = 2; limite[0] = 16; limite[1] = 47;
+    SDL_strlcpy(valor[0], salas.nombre, sizeof valor[0]);
+    SDL_strlcpy(valor[1], salas.servidor, sizeof valor[1]);
     campo = !salas.servidor[0] && salas.estado != SL_BUSCANDO ? 1 : 0;
-    if (ventana) SDL_StartTextInput(ventana);
-  } else if (ventana) SDL_StopTextInput(ventana);
+  } else if (f == F_CREAR) {
+    n_campos = 2; limite[0] = 24; limite[1] = 16;
+    snprintf(valor[0], sizeof valor[0], "%s's room", salas.nombre);
+  } else if (f == F_CLAVE) {
+    n_campos = 1; limite[0] = 16;
+  }
+  if (ventana) { if (f) SDL_StartTextInput(ventana); else SDL_StopTextInput(ventana); }
+}
+// Lo que se escribe va al campo del formulario abierto (también desde HINO_TEXTO, en dinput8.c).
+void sala_escribir(const char *t) {
+  if (!form) return;
+  for (const unsigned char *p = (const unsigned char *)t; *p; p++) {
+    size_t l = strlen(valor[campo]);
+    if (*p >= 0x20 && *p < 0x7f && *p != '\t' && l < limite[campo]) { valor[campo][l] = (char)*p; valor[campo][l + 1] = 0; }
+  }
 }
 static void evento(const SDL_Event *e) {
   if (oyente_anterior) oyente_anterior(e);
-  if (!editando || !salas.visible) return;
-  size_t lim = campo ? 47 : 16;
-  if (e->type == SDL_EVENT_TEXT_INPUT) {
-    for (const unsigned char *p = (const unsigned char *)e->text.text; *p; p++) {
-      size_t l = strlen(edicion[campo]);
-      if (*p >= 0x20 && *p < 0x7f && *p != '\t' && l < lim) { edicion[campo][l] = (char)*p; edicion[campo][l + 1] = 0; }
-    }
-  } else if (e->type == SDL_EVENT_KEY_DOWN) {
-    size_t l = strlen(edicion[campo]);
-    if (e->key.scancode == SDL_SCANCODE_BACKSPACE && l) edicion[campo][l - 1] = 0;
-    if (e->key.scancode == SDL_SCANCODE_TAB) campo ^= 1;
+  if (!form || !salas.visible) return;
+  if (e->type == SDL_EVENT_TEXT_INPUT) sala_escribir(e->text.text);
+  else if (e->type == SDL_EVENT_KEY_DOWN) {
+    size_t l = strlen(valor[campo]);
+    if (e->key.scancode == SDL_SCANCODE_BACKSPACE && l) valor[campo][l - 1] = 0;
+    if (e->key.scancode == SDL_SCANCODE_TAB) campo = (campo + 1) % n_campos;
   }
 }
 
@@ -393,33 +403,38 @@ static void barra(int fila) { // la barra blanca que late, de borde a borde (en 
   quad(T_RED, -(float)corrido, y - 40, 800.0f + (float)corrido, y + 40, 0.5f / 256, 220.5f / 256, 255.5f / 256, 255.5f / 256, c);
 }
 
+// La lista de salas: cada una con su nombre, el anfitrión, cuántos hay y si tiene clave.
 static void lobby(void) {
-  int n = salas.n_salas, abiertas = 0;
+  int n = salas.n_salas, abiertas = 0, conectado = salas.estado == SL_LOBBY;
   for (int i = 0; i < n; i++) abiertas += salas.salas[i].estado == 'e';
   if (sel >= n) sel = n - 1;
   if (sel < 0) sel = 0;
   int pagina = sel / 8, paginas = n ? (n + 7) / 8 : 1;
-  if (!editando) {
-    int t = fila_tocada();
-    if (t == -1) editar(1);
-    else if (t >= 0 && pagina * 8 + t < n) { if (sel == pagina * 8 + t) apretado[B_A] = 1; else sel = pagina * 8 + t; }
-    if (apretado[B_ARR] && n) sel = (sel + n - 1) % n;
-    if (apretado[B_ABA] && n) sel = (sel + 1) % n;
-    if (apretado[B_IZQ] && n) sel = SDL_max(0, sel - 8);
-    if (apretado[B_DER] && n) sel = SDL_min(n - 1, sel + 8);
-    if (apretado[B_A] && n && salas.salas[sel].estado == 'e') salas_unirse(salas.salas[sel].id);
-    if (apretado[B_C]) salas_crear();
-    if (apretado[B_D]) editar(1);
-    if (apretado[B_B]) salas_volver();
+  int t = fila_tocada();
+  if (t == -1) abrir(F_AJUSTES);
+  else if (t >= 0 && pagina * 8 + t < n) { if (sel == pagina * 8 + t) apretado[B_A] = 1; else sel = pagina * 8 + t; }
+  if (apretado[B_ARR] && n) sel = (sel + n - 1) % n;
+  if (apretado[B_ABA] && n) sel = (sel + 1) % n;
+  if (apretado[B_IZQ] && n) sel = SDL_max(0, sel - 8);
+  if (apretado[B_DER] && n) sel = SDL_min(n - 1, sel + 8);
+  if (apretado[B_A] && n && salas.salas[sel].estado == 'e' && conectado) {
+    if (salas.salas[sel].privada) { sala_clave = salas.salas[sel].id; abrir(F_CLAVE); }
+    else salas_unirse(salas.salas[sel].id, "");
   }
-  int conectado = salas.estado == SL_LOBBY;
-  if (n) ayuda(AY_PLAY, 0);
-  ayuda(AY_SERVER, n ? 1 : 0);
-  ayuda(AY_PLAYER, n ? 2 : 1);
+  if (apretado[B_C] && conectado) abrir(F_CREAR);
+  if (apretado[B_D]) abrir(F_AJUSTES);
+  if (apretado[B_B]) salas_volver();
+  if (form) return;
+  int linea = 0;
+  if (n) ayuda("Button A" PUNTOS "Enter Room", linea++);
+  ayuda("Button C" PUNTOS "Create Room", linea++);
+  ayuda("Button D" PUNTOS "Settings", linea++);
   palabra(conectado ? SERVER_ON : SERVER_OFF, 20, 70, 1);
   if (conectado) {
     float x = escribir("Players:", 189, 90, 1, BLANCO);
     numero(salas.conectados, x + 6, 90, BLANCO);
+    x = escribir("Rooms:", 357, 90, 1, BLANCO);
+    numero(n, x + 6, 90, BLANCO);
   }
   char l[120];
   snprintf(l, sizeof l, "%s / %s", salas.nombre, salas.servidor[0] ? salas.servidor : "(no server)");
@@ -437,27 +452,33 @@ static void lobby(void) {
     const FilaSala *s = &salas.salas[pagina * 8 + i];
     float y = 172.0f + 45.0f * (float)i, base = y + 23;
     palabra(s->estado == 'e' ? STANDBY : BUSY, 40, y, 1);
-    texto(s->anfitrion, 143, base, BLANCO);
-    if (s->estado == 'e') snprintf(l, sizeof l, "Delay %d", s->delay);
-    else snprintf(l, sizeof l, "vs %s%s", s->invitado, s->estado == 'j' ? "  (playing)" : "");
-    texto(l, 354, base, BLANCO);
+    texto(s->nombre[0] ? s->nombre : s->anfitrion, 143, base, BLANCO);
+    texto(s->anfitrion, 452, base, GRIS);
+    snprintf(l, sizeof l, "%d/2", s->invitado[0] ? 2 : 1);
+    texto(l, 652, base, BLANCO);
+    if (s->privada) texto("Key", 706, base, DORADO);
   }
-  if (!n && conectado) texto("No rooms yet: press C to open one.", 143, 195, GRIS);
+  if (!n && conectado) texto("No rooms yet: press C to create one.", 143, 195, GRIS);
 }
 
+// La sala: los dos jugadores, el camino directo y lo que puede hacer cada uno.
 static void sala_propia(void) {
-  int anf = salas.soy_anfitrion, rival = salas.invitado[0] != 0, ok = rival && salas.enlace == EN_LISTO;
-  if (!editando && salas.estado == SL_SALA) {
+  int anf = salas.soy_anfitrion, rival = salas.invitado[0] != 0, ok = rival && salas.enlace == EN_LISTO, quieta = salas.estado == SL_SALA;
+  if (quieta) {
     if (apretado[B_A] && anf && ok) salas_empezar();
+    if (apretado[B_C] && anf && rival) salas_echar();
     if (apretado[B_D] && anf) salas_cambiar_delay();
     if (apretado[B_B]) salas_salir();
     int t = fila_tocada(); // tocar las filas de los jugadores es como A
     if ((t == 0 || t == 1) && anf && ok) salas_empezar();
   }
   int linea = 0;
-  if (anf && ok && salas.estado == SL_SALA) ayuda(AY_START, linea++);
-  if (salas.estado == SL_SALA) ayuda(AY_CANCEL, linea++);
-  if (anf && salas.estado == SL_SALA) ayuda(AY_DELAY, linea++);
+  if (quieta && anf) {
+    if (ok) ayuda("Button A" PUNTOS "Start", linea++);
+    ayuda("Button B" PUNTOS "Close Room", linea++);
+    if (rival) ayuda("Button C" PUNTOS "Kick", linea++);
+    ayuda("Button D" PUNTOS "Select Delay", linea++);
+  } else if (quieta) ayuda("Button B" PUNTOS "Leave Room", linea++);
   if (anf) palabra(SERVER_ON, 20, 70, 1);
   else escribir("Client", 22, 90, 1, BLANCO);
   palabra(PORT, 187, 70, 1);
@@ -465,7 +486,7 @@ static void sala_propia(void) {
   palabra(DELAY, 357, 70, 1);
   numero(salas.delay, 444, 90, BLANCO);
   char l[120];
-  snprintf(l, sizeof l, "%s / Room %d", salas.nombre, salas.sala_id);
+  snprintf(l, sizeof l, "%s%s", salas.sala_nombre[0] ? salas.sala_nombre : salas.anfitrion, salas.sala_privada ? "  (with password)" : "");
   texto(l, 50, 120, BLANCO);
   float x = escribir("Room", 22, 160, 1, BLANCO);
   numero(salas.sala_id, x + 8, 160, BLANCO);
@@ -479,31 +500,43 @@ static void sala_propia(void) {
   palabra(STANDBY, 40, 172, 1);
   snprintf(l, sizeof l, "1P  %s", salas.anfitrion);
   texto(l, 143, 195, BLANCO);
-  texto(anf ? "(you)" : "", 354, 195, GRIS);
+  texto(anf ? "(you, host)" : "(host)", 354, 195, GRIS);
   palabra(!rival ? UNKNOWN : salas.enlace == EN_LISTO ? STANDBY : BUSY, 40, 217, 1);
   snprintf(l, sizeof l, "2P  %s", rival ? salas.invitado : "---");
   texto(l, 143, 240, BLANCO);
   texto(!anf ? "(you)" : "", 354, 240, GRIS);
 }
 
-static void configuracion(void) {
-  if (apretado[B_ARR] || apretado[B_ABA]) campo ^= 1;
+static void formulario(void) {
+  if (apretado[B_ARR]) campo = (campo + n_campos - 1) % n_campos;
+  if (apretado[B_ABA]) campo = (campo + 1) % n_campos;
   int t = fila_tocada();
-  if (t == 0 || t == 1) campo = t;
-  if (apretado[B_A]) { salas_configurar(edicion[0], edicion[1]); editar(0); return; }
-  if (apretado[B_B]) { editar(0); return; }
-  ayuda(AY_DONE, 0);
-  ayuda(AY_CANCEL, 1);
-  palabra(salas.estado >= SL_LOBBY ? SERVER_ON : SERVER_OFF, 20, 70, 1);
-  texto("Your name and the lobby server (address:port).", 40, 121, BLANCO);
+  if (t >= 0 && t < n_campos) campo = t;
+  if (apretado[B_A]) {
+    if (form == F_AJUSTES) salas_configurar(valor[0], valor[1]);
+    else if (form == F_CREAR) salas_crear(valor[0], valor[1]);
+    else salas_unirse(sala_clave, valor[0]);
+    abrir(F_NADA);
+    return;
+  }
+  if (apretado[B_B]) { abrir(F_NADA); return; }
+  static const char *const TITULO_F[] = {"", "Settings", "Create Room", "Enter Password"};
+  static const char *const PISTA[] = {"", "Your name and the lobby server (address:port).",
+                                      "Name your room. With a password, only who knows it can come in.", "This room is private."};
+  static const char *const CAMPO[][2] = {{"", ""}, {"Player", "Server"}, {"Room", "Password"}, {"Password", ""}};
+  ayuda("Button A" PUNTOS "OK", 0);
+  ayuda("Button B" PUNTOS "Cancel", 1);
+  escribir(TITULO_F[form], 22, 90, 1, BLANCO);
+  texto(PISTA[form], 50, 120, BLANCO);
   barra(campo);
   int cursor = (cuadros_presentados() / 20) % 2;
-  for (int i = 0; i < 2; i++) {
+  for (int i = 0; i < n_campos; i++) {
     float y = 172.0f + 45.0f * (float)i;
-    escribir(i ? "Server" : "Player", 42, y + 20, 1, BLANCO);
+    escribir(CAMPO[form][i], 42, y + 20, 1, BLANCO);
     char l[80];
-    snprintf(l, sizeof l, "%s%s", edicion[i], i == campo && cursor ? "_" : "");
+    snprintf(l, sizeof l, "%s%s", valor[i], i == campo && cursor ? "_" : "");
     texto(l, 190, y + 23, BLANCO);
+    if (form == F_CREAR && i == 1 && !valor[1][0] && i != campo) texto("(none: anyone can come in)", 190, y + 23, GRIS);
   }
 }
 
@@ -512,12 +545,12 @@ static const char *mensaje(void) {
   if (salas.aviso[0]) return salas.aviso;
   switch (salas.estado) {
     case SL_CONECTANDO: snprintf(m, sizeof m, "Connecting to the lobby server %s...", salas.servidor); return m;
-    case SL_LOBBY: return salas.n_salas ? "Choose a room and press A, or press C to open your own." : NULL;
+    case SL_LOBBY: return salas.n_salas ? "Choose a room and press A, or press C to create your own." : NULL;
     case SL_SALA:
-      if (!salas.invitado[0]) return "Waiting for a challenger...";
+      if (!salas.invitado[0]) return salas.soy_anfitrion ? "Waiting for someone to come in..." : NULL;
       if (salas.enlace == EN_BUSCANDO) { snprintf(m, sizeof m, "Opening a direct connection with %s...", salas.soy_anfitrion ? salas.invitado : salas.anfitrion); return m; }
       if (salas.enlace == EN_FALLO) return "Could not reach your challenger directly (NAT). Still trying...";
-      if (salas.soy_anfitrion) { snprintf(m, sizeof m, "%s is ready. Press A to start.", salas.invitado); return m; }
+      if (salas.soy_anfitrion) { snprintf(m, sizeof m, "%s came in. Press A to start.", salas.invitado); return m; }
       snprintf(m, sizeof m, "Waiting for %s to start...", salas.anfitrion);
       return m;
     default: return NULL;
@@ -526,9 +559,9 @@ static const char *mensaje(void) {
 
 // Desde presentar() (dibujo.c), antes de las capturas: las salas, la entrada del lobby y su dibujo en el backbuffer.
 void sala_dibujar(GLuint fbo, int bw, int bh, int corrimiento) {
-  if (salas.visible) leer_botones(!editando);
+  if (salas.visible) leer_botones(!form);
   salas_cuadro();
-  if (!salas.visible) { if (editando) editar(0); return; }
+  if (!salas.visible) { if (form) abrir(F_NADA); return; }
   if (!listo) crear_gl();
   if (listo < 0) return;
   corrido = corrimiento;
@@ -537,7 +570,7 @@ void sala_dibujar(GLuint fbo, int bw, int bh, int corrimiento) {
   float u0 = -(float)corrido / 800.0f, u1 = 1 + (float)corrido / 800.0f;
   quad(T_FONDO, -(float)corrido, 0, 800.0f + (float)corrido, 600, u0, 0, u1, 1, BLANCO);
   palabra(TITULO, 20, 20, 1);
-  if (editando) configuracion();
+  if (form) formulario();
   else if (salas.estado == SL_SALA || salas.estado == SL_EMPEZANDO || salas.estado == SL_JUGANDO) sala_propia();
   else lobby();
   const char *m = mensaje();

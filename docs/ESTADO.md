@@ -282,3 +282,31 @@ lados. Si los dos están detrás de NAT simétrico no hay camino directo (no hay
 - La MS Gothic al doble de ancho no entra en una sola fila de 1024: el atlas va en filas.
 - Mandar la difusión de búsqueda necesita `SO_BROADCAST`; la respuesta del servidor vuelve directa (sin bloqueo de
   multicast en Android).
+
+## 2026-10-24 (8) — Salas con nombre y clave, echar, y el arranque que fallaba en el celu
+
+**Pedido**: "posibilidad de crear salas para que cada jugador juegue con quien quiera, tanto en PC como en Android".
+Las salas ya estaban, pero la ayuda decía "Server On/Off" (el texto del juego) y la lista solo mostraba al anfitrión:
+no se entendía que C creaba una sala. Ahora es un sistema de salas a la vista:
+- **Protocolo 2** (`servidor/salas.mjs`, los clientes de la versión 1 reciben el aviso "version"): `CREAR nombre
+  clave`, `UNIRSE sala clave`, `ECHAR`; `LISTA` y `SALA` traen el nombre de la sala y si es privada (la clave nunca
+  sale del servidor). Cinco claves mal seguidas y un minuto sin poder entrar a salas privadas (ni con la buena). La
+  prueba (`servidor/prueba.mjs`) cubre clave mal y bien, echar y volver a entrar, el nombre por defecto y el límite.
+- **Lobby** (`d3d/sala.c`): C abre "Create Room" (nombre, por defecto "<nombre>'s room", y clave opcional); la lista
+  muestra nombre, anfitrión, 1/2 y "Key"; A entra (con clave, la pide: "Enter Password"); en la sala el anfitrión
+  empieza (A), echa (C), cambia el delay (D) o la cierra (B). Los formularios usan el teclado (en Android, el de
+  pantalla). Las ayudas de arriba se escriben en el momento con la negrita del juego a 0,8 ("Button C···Create Room",
+  "Button A···Enter Room", "Button C···Kick"...), y la letra suma E, F, N, V, p y x del menú de configuración
+  (`tex_sys69`, achicadas a 0,85 con su línea base): 57 letras.
+- `HINO_TEXTO="cuadro:texto|..."` escribe en los formularios desde el guion de pruebas (como `HINO_TECLAS`).
+
+**El arranque que fallaba en el celu**: `salas_cuadro` toma la hora al empezar el cuadro, pero el `IR` del servidor
+se procesa después en el mismo cuadro y anota una hora posterior; `ahora - t_estado > 25000` con enteros sin signo
+daba enorme y el tiempo límite del arranque saltaba en el acto. En la PC casi siempre cae en el mismo milisegundo; en
+el A52, más lento, no: el celu abandonaba enseguida, apretaba B para limpiar la pantalla de red y cancelaba el pedido
+de pelea (el registro del celu tenía "Starting" y "did not start" en el mismo bloque de 300 cuadros, y la PC esperó
+sus 25 s). Lo mismo hacía saltar "Could not reach..." al recibir la dirección del rival. Ahora todas esas restas son
+con signo (`pasaron`).
+
+**Probado**: dos copias a la vista contra el servidor local (`_scratch/hino/red/salas-demo.sh`): sala con clave, clave
+mal, entrar, echar, volver a entrar, empezar y pelear. El celu con la versión nueva quedó instalado.

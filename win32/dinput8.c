@@ -278,13 +278,26 @@ const Exportada EXP_DINPUT8[] = {{"DirectInput8Create", DirectInput8Create}, {0,
 
 // Guion de teclas para pruebas: HINO_TECLAS="cuadro:dik:1|0,..." (dik en hex). Se aplica en cada Present,
 // así el mismo guion lleva al port y al original (con el espía de dinput8) por las mismas pantallas.
+void sala_escribir(const char *t); // d3d/sala.c
 void guion_teclas(uint32_t cuadro) {
   const char *g = getenv("HINO_TECLAS");
-  if (!g) return;
   for (const char *p = g; p && *p; ) {
     unsigned n, dik, v;
     if (sscanf(p, "%u:%x:%u", &n, &dik, &v) == 3 && n == cuadro && dik < 256) teclas_virtuales[dik] = v ? 1 : 0;
     p = strchr(p, ',');
     if (p) p++;
+  }
+  // HINO_TEXTO="cuadro:texto|...": lo que se escribiría con el teclado en los formularios del lobby de salas.
+  for (const char *p = getenv("HINO_TEXTO"); p && *p; ) {
+    unsigned n;
+    int k = 0;
+    const char *fin = strchr(p, '|');
+    if (sscanf(p, "%u:%n", &n, &k) == 1 && k && n == cuadro) {
+      char t[64];
+      size_t l = (size_t)((fin ? fin : p + strlen(p)) - (p + k));
+      SDL_strlcpy(t, p + k, SDL_min(l + 1, sizeof t));
+      sala_escribir(t);
+    }
+    p = fin ? fin + 1 : NULL;
   }
 }

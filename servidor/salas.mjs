@@ -6,10 +6,11 @@
 // Uso: node servidor/salas.mjs [puerto]        (por defecto 10995, TCP y UDP; sin dependencias)
 //
 // Protocolo: TCP, un mensaje por línea, campos separados por tabulador.
-//   cliente -> servidor: HOLA versión nombre | NOMBRE nombre | LOCAL ip puerto | CREAR | UNIRSE sala | SALIR |
-//                        DELAY n | EMPEZAR | VOLVER (no arrancó: la sala vuelve a estar lista) | PING
-//   servidor -> cliente: BIENVENIDO id token | LISTA conectados n, y n líneas S id estado delay anfitrión invitado |
-//                        SALA id rol estado delay anfitrión invitado (o "SALA -") |
+//   cliente -> servidor: HOLA versión nombre | NOMBRE nombre | LOCAL ip puerto | CREAR nombre clave |
+//                        UNIRSE sala clave | SALIR | ECHAR (el anfitrión saca al otro) | DELAY n | EMPEZAR |
+//                        VOLVER (no arrancó: la sala vuelve a estar lista) | PING
+//   servidor -> cliente: BIENVENIDO id token | LISTA conectados n, y n líneas S id estado delay anfitrión invitado
+//                        nombre privada | SALA id rol estado delay anfitrión invitado nombre privada (o "SALA -") |
 //                        PAR clave ip puerto ip_local puerto_local (la otra punta) | IR delay | AVISO código | PONG
 //   UDP: "HKLR" + token, mandado desde el socket del juego -> "HKLV ip:puerto" (así el servidor ve la dirección
 //        pública que el NAT le dio a ese socket); "HKLB" (difusión en la red local) -> "HKLS puerto".
@@ -17,10 +18,11 @@ import net from 'node:net';
 import dgram from 'node:dgram';
 import { randomBytes } from 'node:crypto';
 
-export const VERSION = 1;
+export const VERSION = 2; // 2: salas con nombre y clave, ECHAR
 const MAX_LINEA = 512, MAX_CLIENTES = 1000, MAX_POR_IP = 16, OCIOSO_MS = 45000;
 
-const limpiarNombre = (s) => (s ?? '').replace(/[^\x20-\x7e]/g, '').replace(/\t/g, ' ').trim().slice(0, 16) || 'Player';
+const limpiar = (s, n) => (s ?? '').replace(/[^\x20-\x7e]/g, '').trim().slice(0, n);
+const limpiarNombre = (s) => limpiar(s, 16) || 'Player';
 const ipv4 = (s) => /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.test(s) && s.split('.').every((n) => +n <= 255);
 const sinPrefijo = (ip) => (ip ?? '').replace(/^::ffff:/, '');
 
@@ -30,7 +32,7 @@ export function iniciar(puerto = 10995, { log = console.log } = {}) {
 
   const enviar = (c, ...campos) => { if (!c.sock.destroyed) c.sock.write(campos.join('\t') + '\n'); };
   const lista = () => {
-    const filas = [...salas.values()].map((s) => ['S', s.id, s.estado, s.delay, s.anfitrion.nombre, s.invitado?.nombre ?? '']);
+    const filas = [...salas.values()].map((s) => ['S', s.id, s.estado, s.delay, s.anfitrion.nombre, s.invitado?.nombre ?? '', s.nombre, s.clave ? 1 : 0]);
     const dentro = [...clientes.values()].filter((x) => x.nombre);
     for (const c of dentro) {
       enviar(c, 'LISTA', dentro.length, filas.length);
@@ -39,14 +41,14 @@ export function iniciar(puerto = 10995, { log = console.log } = {}) {
   };
   const avisarSala = (s) => {
     for (const [c, rol] of [[s.anfitrion, 'anfitrion'], [s.invitado, 'invitado']])
-      if (c) enviar(c, 'SALA', s.id, rol, s.estado, s.delay, s.anfitrion.nombre, s.invitado?.nombre ?? '');
+      if (c) enviar(c, 'SALA', s.id, rol, s.estado, s.delay, s.anfitrion.nombre, s.invitado?.nombre ?? '', s.nombre, s.clave ? 1 : 0);
   };
   // Cuando la sala está completa y los dos ya mandaron su UDP, cada uno recibe cómo llegar al otro.
   const par = (s) => {
     const a = s.anfitrion, b = s.invitado;
     if (!b || !a.publico || !b.publico) return;
     for (const [yo, otro] of [[a, b], [b, a]])
-      enviar(yo, 'PAR', s.clave, otro.publico.ip, otro.publico.puerto, otro.local?.ip ?? '', otro.local?.puerto ?? 0);
+      enviar(yo, 'PAR', s.par, otro.publico.ip, otro.publico.puerto, otro.local?.ip ?? '', otro.local?.puerto ?? 0);
   };
   const salir = (c, motivo) => {
     const s = c.sala;
@@ -59,7 +61,8 @@ export function iniciar(puerto = 10995, { log = console.log } = {}) {
     } else {
       s.invitado = null; s.estado = 'espera';
       enviar(c, 'SALA', '-');
-      avisarSala(s); enviar(s.anfitrion, 'AVISO', 'se_fue');
+      if (motivo === 'echado') enviar(c, 'AVISO', 'echado');
+      avisarSala(s); enviar(s.anfitrion, 'AVISO', motivo === 'echado' ? 'lo_echaste' : 'se_fue');
     }
     lista();
   };
@@ -67,23 +70,32 @@ export function iniciar(puerto = 10995, { log = console.log } = {}) {
   const ordenes = {
     NOMBRE(c, [nombre]) { c.nombre = limpiarNombre(nombre); if (c.sala) avisarSala(c.sala); lista(); },
     LOCAL(c, [ip, p]) { if (ipv4(ip) && +p > 0 && +p < 65536) { c.local = { ip, puerto: +p }; if (c.sala) par(c.sala); } },
-    CREAR(c) {
+    CREAR(c, [nombre, clave]) {
       if (c.sala) return enviar(c, 'AVISO', 'ya_en_sala');
-      const s = { id: ++ultimaSala, anfitrion: c, invitado: null, estado: 'espera', delay: 1, clave: '' };
+      const s = { id: ++ultimaSala, anfitrion: c, invitado: null, estado: 'espera', delay: 1, par: '',
+        nombre: limpiar(nombre, 24) || `${c.nombre}'s room`, clave: limpiar(clave, 16) };
       salas.set(s.id, s); c.sala = s;
       log(`sala ${s.id} creada por ${c.nombre}`);
       avisarSala(s); lista();
     },
-    UNIRSE(c, [id]) {
+    UNIRSE(c, [id, clave]) {
       const s = salas.get(+id);
       if (c.sala) return enviar(c, 'AVISO', 'ya_en_sala');
       if (!s) return enviar(c, 'AVISO', 'no_existe');
       if (s.estado !== 'espera') return enviar(c, 'AVISO', 'llena');
-      s.invitado = c; s.estado = 'llena'; s.clave = randomBytes(8).toString('hex'); c.sala = s;
+      if (s.clave) { // cinco claves mal y un minuto sin poder entrar a salas privadas: la clave no se adivina probando
+        if (Date.now() < c.castigo) return enviar(c, 'AVISO', 'espera');
+        if (limpiar(clave, 16) !== s.clave) {
+          if (++c.fallos >= 5) { c.fallos = 0; c.castigo = Date.now() + 60000; }
+          return enviar(c, 'AVISO', 'clave');
+        }
+      }
+      s.invitado = c; s.estado = 'llena'; s.par = randomBytes(8).toString('hex'); c.sala = s;
       log(`${c.nombre} entró a la sala ${s.id} de ${s.anfitrion.nombre}`);
       avisarSala(s); par(s); lista();
     },
     SALIR(c) { salir(c); },
+    ECHAR(c) { const s = c.sala; if (s && s.anfitrion === c && s.invitado && s.estado !== 'jugando') salir(s.invitado, 'echado'); },
     DELAY(c, [n]) {
       const s = c.sala;
       if (!s || s.anfitrion !== c || !(+n >= 1 && +n <= 5)) return;
@@ -109,7 +121,7 @@ export function iniciar(puerto = 10995, { log = console.log } = {}) {
     const ip = sinPrefijo(sock.remoteAddress);
     if (clientes.size >= MAX_CLIENTES || (porIp.get(ip) ?? 0) >= MAX_POR_IP) return sock.destroy();
     porIp.set(ip, (porIp.get(ip) ?? 0) + 1);
-    const c = { id: ++ultimoCliente, sock, ip, buf: '', nombre: '', token: randomBytes(8).toString('hex'), local: null, publico: null, sala: null, visto: Date.now() };
+    const c = { id: ++ultimoCliente, sock, ip, buf: '', nombre: '', token: randomBytes(8).toString('hex'), local: null, publico: null, sala: null, visto: Date.now(), fallos: 0, castigo: 0 };
     clientes.set(c.id, c); porToken.set(c.token, c);
     sock.setEncoding('latin1');
     sock.setNoDelay(true);

@@ -21,7 +21,7 @@
 #define MSG_NOSIGNAL 0 // Windows no tiene SIGPIPE
 #endif
 
-#define VERSION 1
+#define VERSION 2 // 2: salas con nombre y clave
 #define PUERTO_SALAS 10995
 static const char COMENTARIO[] = "Hinokakera CE";
 
@@ -43,6 +43,10 @@ uint8_t teclas_sala[256];
 static uint32_t escena, escena_cuadro, red_obj, cuadro;
 static uint8_t tecla_a = 0x2c, tecla_b = 0x2d, tecla_c = 0x2e; // las del jugador 1 en config.dat
 static struct { uint8_t dik; int resta; } pulso;            // tecla del lobby: 3 cuadros abajo y 3 arriba
+
+// ¿Pasaron más de ms desde t? Con signo: lo que llega en el mismo cuadro (IR, PAR) anota una hora posterior a "ahora",
+// y sin signo la resta daba enorme (el tiempo límite del arranque saltaba en el acto: en el celu, más lento, pasaba).
+static int pasaron(uint32_t ahora, uint32_t t, uint32_t ms) { return (int32_t)(ahora - t) > (int32_t)ms; }
 
 static void aviso(uint32_t ms, const char *fmt, ...) {
   va_list ap;
@@ -271,16 +275,16 @@ int salas_paquete(const uint8_t *d, int n, const struct sockaddr_in *de) {
 static void copiar(char *d, const char *s, size_t tam) { limpiar_nombre(d, s ? s : "", tam); }
 
 static void linea(char *l) {
-  char *f[8];
+  char *f[10];
   int n = 0;
-  for (char *p = l; n < 8;) { // campos separados por tabulador (pueden quedar vacíos)
+  for (char *p = l; n < 10;) { // campos separados por tabulador (pueden quedar vacíos)
     f[n++] = p;
     char *t = strchr(p, '\t');
     if (!t) break;
     *t = 0;
     p = t + 1;
   }
-  for (int i = n; i < 8; i++) f[i] = "";
+  for (int i = n; i < 10; i++) f[i] = "";
   if (!strcmp(f[0], "BIENVENIDO")) {
     SDL_strlcpy(token, f[2], sizeof token);
     salas.estado = SL_LOBBY;
@@ -297,6 +301,8 @@ static void linea(char *l) {
     s->delay = atoi(f[3]);
     copiar(s->anfitrion, f[4], sizeof s->anfitrion);
     copiar(s->invitado, f[5], sizeof s->invitado);
+    copiar(s->nombre, f[6], sizeof s->nombre);
+    s->privada = atoi(f[7]);
   } else if (!strcmp(f[0], "SALA")) {
     if (f[1][0] == '-') {
       salas.sala_id = 0;
@@ -311,6 +317,8 @@ static void linea(char *l) {
     salas.delay = SDL_clamp(atoi(f[4]), 1, 5);
     copiar(salas.anfitrion, f[5], sizeof salas.anfitrion);
     copiar(salas.invitado, f[6], sizeof salas.invitado);
+    copiar(salas.sala_nombre, f[7], sizeof salas.sala_nombre);
+    salas.sala_privada = atoi(f[8]);
     if (antes && !salas.invitado[0]) sin_rival();
     if (salas.estado == SL_LOBBY) salas.estado = SL_SALA;
     if (salas.soy_anfitrion && !antes && salas.invitado[0]) aviso(4000, "%s entered the room.", salas.invitado);
@@ -333,6 +341,8 @@ static void linea(char *l) {
       {"cerrada", "The host closed the room."}, {"se_fue", "Your challenger left the room."},
       {"no_existe", "That room is gone."}, {"llena", "That room is already full."},
       {"no_se_puede", "The match cannot start yet."}, {"version", "The lobby server runs another version of the game."},
+      {"clave", "Wrong password."}, {"espera", "Too many wrong passwords: wait a minute."},
+      {"echado", "The host removed you from the room."}, {"lo_echaste", "You removed your challenger from the room."},
     };
     for (size_t i = 0; i < SDL_arraysize(COD); i++) if (!strcmp(f[1], COD[i][0])) aviso(5000, "%s", COD[i][1]);
   }
@@ -379,7 +389,7 @@ static void buscar(uint32_t ahora) {
     setsockopt(busca, SOL_SOCKET, SO_BROADCAST, (const char *)&si, sizeof si);
     no_bloqueante(busca);
   }
-  if (ahora - t_busca > 1500) {
+  if (pasaron(ahora, t_busca, 1500)) {
     struct sockaddr_in a;
     memset(&a, 0, sizeof a);
     a.sin_family = AF_INET;
@@ -405,8 +415,18 @@ static void buscar(uint32_t ahora) {
 }
 
 // ---------------- acciones del lobby ----------------
-void salas_crear(void) { if (salas.estado == SL_LOBBY) mandar("CREAR"); }
-void salas_unirse(int id) { if (salas.estado == SL_LOBBY) mandar("UNIRSE\t%d", id); }
+void salas_crear(const char *nombre, const char *clave) {
+  char n[25], c[17];
+  limpiar_nombre(n, nombre, sizeof n);
+  limpiar_nombre(c, clave, sizeof c);
+  if (salas.estado == SL_LOBBY) mandar("CREAR\t%s\t%s", n, c);
+}
+void salas_unirse(int id, const char *clave) {
+  char c[17];
+  limpiar_nombre(c, clave ? clave : "", sizeof c);
+  if (salas.estado == SL_LOBBY) mandar("UNIRSE\t%d\t%s", id, c);
+}
+void salas_echar(void) { if (salas.estado == SL_SALA && salas.soy_anfitrion && salas.invitado[0]) mandar("ECHAR"); }
 void salas_salir(void) { if (salas.estado == SL_SALA) mandar("SALIR"); }
 void salas_empezar(void) {
   if (salas.estado == SL_SALA && salas.soy_anfitrion && salas.invitado[0] && salas.enlace == EN_LISTO) mandar("EMPEZAR");
@@ -478,7 +498,7 @@ static void manejar_juego(uint32_t ahora) {
   } else if (sub >= 0xb && sub <= 0xd) {
     pulsar(tecla_b); // rechazado u ocupado: se limpia el mensaje y se vuelve a pedir
   }
-  if (ahora - t_estado > 25000) {
+  if (pasaron(ahora, t_estado, 25000)) {
     aviso(6000, "The match did not start. Try again.");
     salas.estado = SL_SALA;
     mandar("VOLVER");
@@ -530,9 +550,9 @@ void salas_cuadro(void) {
       if (activa && M32(escena + E_FASE) != 8 && !(red_obj && M32(red_obj + R_SESION))) { apagar(); return; }
       if (activa) { salas.opacidad = SDL_max(0, salas.opacidad - 1.0f / 30); return; } // sale hacia la selección
       salas.visible = 0;
-      if (red_obj && M32(red_obj + R_SESION)) { t_estado = ahora; if (ahora - t_ping > 15000) { mandar("PING"); t_ping = ahora; } }
+      if (red_obj && M32(red_obj + R_SESION)) { t_estado = ahora; if (pasaron(ahora, t_ping, 15000)) { mandar("PING"); t_ping = ahora; } }
       if (tcp != SOCK_INVALIDO) recibir();
-      if (ahora - t_estado > 2000) apagar(); // terminó el juego en red (volvió al título)
+      if (pasaron(ahora, t_estado, 2000)) apagar(); // terminó el juego en red (volvió al título)
       return;
     default:
       if (!activa) { apagar(); return; } // salió de la pantalla de red
@@ -554,12 +574,12 @@ void salas_cuadro(void) {
   if (salas.estado == SL_CONECTANDO && !conexion && tcp == SOCK_INVALIDO && salas.fallo_conexion && (int32_t)(ahora - t_reintento) > 0) conectar();
   if (tcp != SOCK_INVALIDO) {
     recibir();
-    if (tcp != SOCK_INVALIDO && ahora - t_ping > 15000) { mandar("PING"); t_ping = ahora; }
+    if (tcp != SOCK_INVALIDO && pasaron(ahora, t_ping, 15000)) { mandar("PING"); t_ping = ahora; }
   }
   // El servidor tiene que ver al socket del juego desde afuera (para el rival) y saber su IP local.
   sock_t s;
   int puerto;
-  if (tcp != SOCK_INVALIDO && token[0] && red_socket_juego(&s, &puerto) && ahora - t_registro > (registrado ? 15000u : 1000u)) {
+  if (tcp != SOCK_INVALIDO && token[0] && red_socket_juego(&s, &puerto) && pasaron(ahora, t_registro, registrado ? 15000 : 1000)) {
     char m[24];
     memcpy(m, "HKLR", 4);
     memcpy(m + 4, token, 16);
@@ -574,8 +594,8 @@ void salas_cuadro(void) {
     t_registro = ahora;
   }
   // Con rival: paquetes al otro hasta que llegue la respuesta (cada 100 ms) y después uno por segundo.
-  if (salas.sala_id && salas.enlace != EN_NADA && par.n_cand && ahora - par.ultimo_envio > (salas.enlace == EN_BUSCANDO ? 100u : 1000u)) {
-    if (salas.enlace == EN_BUSCANDO && ahora - par.desde > 10000) salas.enlace = EN_FALLO; // el lobby lo dice; se sigue probando
+  if (salas.sala_id && salas.enlace != EN_NADA && par.n_cand && pasaron(ahora, par.ultimo_envio, salas.enlace == EN_BUSCANDO ? 100 : 1000)) {
+    if (salas.enlace == EN_BUSCANDO && pasaron(ahora, par.desde, 10000)) salas.enlace = EN_FALLO; // el lobby lo dice; se sigue probando
     perforar(ahora);
   }
   if (quieta) manejar_juego(ahora);

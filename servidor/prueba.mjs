@@ -1,4 +1,4 @@
-// Prueba del servidor de salas con dos clientes de mentira (TCP + UDP), como los del juego: node servidor/prueba.mjs
+// Prueba del servidor de salas con clientes de mentira (TCP + UDP), como los del juego: node servidor/prueba.mjs
 import net from 'node:net';
 import dgram from 'node:dgram';
 import assert from 'node:assert/strict';
@@ -43,11 +43,12 @@ b.mandar('HOLA', VERSION, 'Ju\x01an\twith tab and a very long name');
 const [, , tokenB] = await b.esperar('BIENVENIDO');
 assert.equal((await b.esperar('LISTA', (l) => l[1] === '2'))[2], '0');
 
-a.mandar('CREAR');
+// Una sala con nombre y clave: en la lista sale el nombre y que es privada, nunca la clave.
+a.mandar('CREAR', 'Sala de Agus', 'secreto');
 const salaA = await a.esperar('SALA');
-assert.deepEqual(salaA.slice(2), ['anfitrion', 'espera', '1', 'Agus', '']);
+assert.deepEqual(salaA.slice(2), ['anfitrion', 'espera', '1', 'Agus', '', 'Sala de Agus', '1']);
 const fila = await b.esperar('S');
-assert.deepEqual(fila.slice(2), ['espera', '1', 'Agus', '']);
+assert.deepEqual(fila.slice(2), ['espera', '1', 'Agus', '', 'Sala de Agus', '1']);
 
 // El UDP desde el "socket del juego": el servidor contesta con la dirección que ve.
 const vA = await a.udpPedir(`HKLR${tokenA}`), vB = await b.udpPedir(`HKLR${tokenB}`);
@@ -57,14 +58,25 @@ a.mandar('LOCAL', '192.168.1.40', '10996');
 b.mandar('LOCAL', '192.168.1.59', '10996');
 assert.equal(await b.udpPedir('HKLB'), `HKLS${srv.puerto}`);
 
-b.mandar('UNIRSE', salaA[1]);
+// Clave equivocada: afuera. Bien: adentro, con la dirección del otro.
+b.mandar('UNIRSE', salaA[1], 'otra');
+assert.equal((await b.esperar('AVISO'))[1], 'clave');
+b.mandar('UNIRSE', salaA[1], 'secreto');
 const enB = await b.esperar('SALA');
-assert.deepEqual(enB.slice(2), ['invitado', 'llena', '1', 'Agus', 'Juan']); // sin el control y cortado en el tabulador
-// Cada uno recibe la dirección pública y la local del otro, con la misma clave.
+assert.deepEqual(enB.slice(2), ['invitado', 'llena', '1', 'Agus', 'Juan', 'Sala de Agus', '1']); // sin el control y cortado en el tabulador
 const parA = await a.esperar('PAR'), parB = await b.esperar('PAR');
 assert.equal(parA[1], parB[1]);
 assert.deepEqual(parA.slice(2), ['127.0.0.1', String(b.udp.address().port), '192.168.1.59', '10996']);
 assert.deepEqual(parB.slice(2), ['127.0.0.1', String(a.udp.address().port), '192.168.1.40', '10996']);
+
+// El anfitrión lo echa; vuelve a entrar.
+a.mandar('ECHAR');
+assert.deepEqual(await b.esperar('SALA', (l) => l[1] === '-'), ['SALA', '-']);
+assert.equal((await b.esperar('AVISO'))[1], 'echado');
+assert.equal((await a.esperar('AVISO'))[1], 'lo_echaste');
+assert.equal((await a.esperar('SALA', (l) => l[3] === 'espera'))[6], '');
+b.mandar('UNIRSE', salaA[1], 'secreto');
+await b.esperar('SALA', (l) => l[3] === 'llena');
 
 b.mandar('DELAY', '4'); // solo el anfitrión cambia el delay
 a.mandar('DELAY', '3');
@@ -82,10 +94,20 @@ assert.deepEqual(await b.esperar('SALA', (l) => l[1] === '-'), ['SALA', '-']);
 assert.equal((await b.esperar('AVISO'))[1], 'cerrada');
 assert.deepEqual(await b.esperar('LISTA', (l) => l[1] === '1'), ['LISTA', '1', '0']);
 
-// Basura: una línea enorme corta la conexión, sin tirar el servidor.
+// Sin clave, con el nombre por defecto; cinco claves mal seguidas y se espera un minuto.
+b.mandar('CREAR', '', '');
+assert.equal((await b.esperar('SALA', (l) => l[7] === "Juan's room"))[8], '0');
 const c = await cliente('x');
 c.mandar('HOLA', VERSION, 'x');
 await c.esperar('BIENVENIDO');
+b.mandar('SALIR');
+b.mandar('CREAR', 'Cerrada', 'clave');
+const cerrada = await b.esperar('SALA', (l) => l[7] === 'Cerrada');
+for (let i = 0; i < 5; i++) { c.mandar('UNIRSE', cerrada[1], `mal${i}`); assert.equal((await c.esperar('AVISO'))[1], 'clave'); }
+c.mandar('UNIRSE', cerrada[1], 'clave');
+assert.equal((await c.esperar('AVISO'))[1], 'espera');
+
+// Basura: una línea enorme corta la conexión, sin tirar el servidor.
 await new Promise((ok) => { c.sock.on('close', ok); c.sock.write('A'.repeat(9000)); });
 b.mandar('PING');
 await b.esperar('PONG');

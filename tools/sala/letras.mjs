@@ -1,7 +1,8 @@
 // La letra del lobby de salas (d3d/sala.c): las letras de los nombres de escenarios y personajes, de la pantalla
-// de red y los dígitos de la de configuración, recortadas de las texturas del juego con su sombra (como el nombre
-// de Sunlit Shore en tools/escenario/playa.mjs). Salen en obj/tex_sala.bmt con las medidas en obj/sala.txt, que
-// van en mods/vsobj2.dat junto con los escenarios.
+// de red y del menú de configuración, y sus dígitos, recortadas de las texturas del juego con su sombra (como el
+// nombre de Sunlit Shore en tools/escenario/playa.mjs). Salen en obj/tex_sala.bmt con las medidas en obj/sala.txt,
+// que van en mods/vsobj2.dat junto con los escenarios. El lobby escribe con ellas en el momento (también las ayudas
+// de arriba, a 0,8).
 //
 //   node tools/sala/letras.mjs [--png carpeta]   (también lo corre tools/escenario/playa.mjs)
 //
@@ -13,49 +14,35 @@ import { join } from 'node:path';
 import { sacar } from '../escenario/moonlit.mjs';
 import { leerBmt, escribirBmt, png } from '../escenario/bmt.mjs';
 
-// [textura, banda (y desde, alto), x del trazo desde y hasta]. Todas blancas con sombra; los dígitos son los de
-// tex_sys69, que la pantalla de red usa a tamaño natural (más altos que las mayúsculas).
-const B24 = (f) => ['tex_sys24', f * 32, 32], B25 = (f) => ['tex_sys25', f * 32, 32];
+// [textura, banda (y desde, alto)], x del trazo desde y hasta, escala, avance y línea base (dentro de la banda) si
+// no sirve la que se calcula. Todas blancas con sombra. Las del menú de configuración (tex_sys69) son un 18 % más
+// grandes que las de los nombres y se achican; sus dígitos van a tamaño natural, como los usa la pantalla de red.
+const B24 = (f) => ['tex_sys24', f * 32, 32], B25 = (f) => ['tex_sys25', f * 32, 32], CFG = (y) => ['tex_sys69', y, 30];
 const RED = ['tex_sys79', 40, 30], RED2 = ['tex_sys79', 130, 30], AYUDA = ['tex_sys79', 158, 22], DIG = ['tex_sys69', 478, 30];
-const L = (b, x0, x1, escala = 1, avance) => ({ banda: b, x0, x1, escala, avance });
+const L = (b, x0, x1, escala = 1, avance, base) => ({ banda: b, x0, x1, escala, avance, base });
 export const LETRAS = {
   A: L(B25(0), 130, 148), B: L(B24(0), 171, 188), C: L(B25(3), 5, 23), D: L(RED2, 111, 131), G: L(B24(0), 85, 103),
   H: L(B24(3), 161, 184), K: L(B25(1), 132, 153), L: L(B24(0), 22, 39), M: L(B25(2), 131, 157), O: L(B24(3), 52, 70),
   P: L(B24(6), 161, 177), R: L(B25(0), 4, 21), S: L(B24(1), 158, 170), T: L(B24(6), 45, 62), W: L(B24(4), 69, 93),
+  // "Easy", "Full", "Normal", "Visual", "Texture" y "Simple" del menú de configuración
+  E: L(CFG(0), 363, 382, 0.85, undefined, 21), F: L(CFG(30), 203, 222, 0.85, undefined, 22), N: L(CFG(30), 363, 385, 0.85, undefined, 21),
+  V: L(CFG(90), 30, 50, 0.85, undefined, 20), x: L(CFG(120), 124, 139, 0.85, undefined, 20), p: L(CFG(180), 252, 268, 0.85, undefined, 22),
   a: L(B24(0), 115, 126), c: L(B24(1), 173, 184), d: L(B24(4), 177, 191), e: L(B24(0), 141, 152), f: L(B24(6), 140, 152),
   g: L(RED, 33, 47), h: L(B24(2), 185, 198), i: L(B24(2), 200, 208), k: L(B25(1), 167, 182), l: L(B24(0), 189, 197),
   m: L(B24(7), 156, 178), n: L(B24(4), 160, 173), o: L(B24(0), 41, 53), r: L(B24(0), 104, 114), s: L(B24(0), 56, 65),
   t: L(B24(0), 69, 75), u: L(B24(0), 200, 211), v: L(B24(0), 128, 140), w: L(B24(2), 166, 185), y: L(B24(6), 201, 215),
   '-': L(B24(0), 162, 169), '/': L(RED, 93, 104), ':': L(RED2, 182, 187), '(': L(B24(7), 61, 70), ')': L(B24(7), 187, 196),
-  // De la ayuda chica: se agranda (y se espacia como allá, cada 7 px) para que achicada como la ayuda quede igual.
+  // El punto de "Button C···": de la ayuda chica, agrandado y espaciado para que a 0,8 quede como allá.
   '·': L(AYUDA, 81, 83, 1.2, 8),
   ...Object.fromEntries([[3, 15], [22, 32], [41, 54], [61, 74], [82, 94], [102, 116], [122, 136], [143, 156], [162, 176], [181, 196]]
     .map(([x0, x1], d) => [String(d), L(DIG, x0, x1)])),
 };
 export const SEPARACION = 0.5, ESPACIO = 8; // en los nombres del juego los trazos quedan a 0-1 px
-
-// Las ayudas de arriba a la derecha van en la cursiva fina y chica de las de la pantalla de red (tex_sys79), armadas
-// con pedazos de ellas; la A y la P no están ahí y salen de las de Replay (tex_sys92), achicadas a la misma altura.
-// Cada pedazo: [banda, x desde, x hasta] y el hueco hasta el siguiente (los de las ayudas originales).
-const AY1 = ['tex_sys79', 158, 22], AY2 = ['tex_sys79', 179, 23], AYR = ['tex_sys92', 449, 21];
-const P = ([b, x0, x1, escala = 1], hueco = 1) => ({ banda: b, x0, x1, escala, hueco });
-const BUTTON = [AY1, 2, 57], PUNTOS = [AY1, 81, 97], A_ = [AYR, 66, 78, 0.92], B_ = [AY1, 2, 13], C_ = [AY1, 66, 78], D_ = [AY2, 66, 79];
-const S_ = [AY2, 101, 111], t_ = [AY2, 148, 153], a_ = [AY2, 189, 197], r_ = [AY1, 149, 155], n_ = [AY1, 49, 57], c_ = [AY2, 138, 145],
-  e_ = [AY2, 113, 120], l_ = [AY2, 123, 127], o_ = [AY1, 39, 47], y_ = [AY2, 198, 208], P_ = [AYR, 102, 113, 0.92], D2 = [AY2, 159, 172];
-const boton = (letra) => [P(BUTTON, 8), P(letra, 3), P(PUNTOS, 3)];
-const palabra = (...letras) => letras.map((l) => P(l));
-// El orden es el que usa d3d/sala.c.
-export const AYUDAS = [
-  ['Button A···Play', [...boton(A_), ...palabra(P_, l_, a_, y_)]],
-  ['Button C···Server On/Off', [P([AY1, 2, 224])]],
-  ['Button D···Select Delay', [P([AY2, 2, 208])]],
-  ['Button A···Start', [...boton(A_), ...palabra(S_, t_, a_, r_, t_)]],
-  ['Button B···Cancel', [...boton(B_), ...palabra(C_, a_, n_, c_, e_, l_)]],
-  ['Button D···Player / Server', [...boton(D_), ...palabra(P_, l_, a_, y_, e_), P(r_, 6), P([AY1, 186, 193], 5), P([AY1, 100, 155])]],
-  ['Button A···Done', [...boton(A_), ...palabra(D2, o_, n_, e_)]],
-];
 // Lo que escribe el lobby con esta letra (d3d/sala.c): tiene que estar todo.
-export const TEXTOS = ['Players:', 'Rooms:', 'Room', 'Ping', 'Client', 'Server', 'Player', 'ms', 'vs', '0123456789/:-()'];
+export const TEXTOS = ['Players:', 'Room', 'Rooms:', 'Ping', 'ms', 'Client', 'Server', 'Player', 'Password', 'Private',
+  'Create Room', 'Enter Password', 'Settings', 'Button A···Enter Room', 'Button C···Create Room', 'Button D···Settings',
+  'Button A···Start', 'Button B···Close Room', 'Button B···Leave Room', 'Button C···Kick', 'Button D···Select Delay',
+  'Button A···OK', 'Button B···Cancel', '0123456789/:-()'];
 
 const texturas = new Map();
 const textura = (n) => texturas.get(n) ?? texturas.set(n, leerBmt(sacar(`obj/${n}.bmt`))).get(n);
@@ -94,7 +81,7 @@ function banda(nombre, y0, h) {
   return { t, W, h, y0, cajas, asignado, base };
 }
 
-function glifo(ch, { banda: [nombre, y0, h], x0, x1, escala, avance }) {
+function glifo(ch, { banda: [nombre, y0, h], x0, x1, escala, avance, base }) {
   const b = banda(nombre, y0, h), mias = new Set();
   b.cajas.forEach((c, k) => { if (c[0] >= x0 - 1 && c[2] <= x1 + 1) mias.add(k); });
   if (!mias.size) throw new Error(`letras: no encontré '${ch}' en ${nombre}`);
@@ -109,27 +96,13 @@ function glifo(ch, { banda: [nombre, y0, h], x0, x1, escala, avance }) {
     if (!mias.has(b.asignado[y * b.W + x])) continue;
     b.t.rgba.copy(rgba, 4 * ((y - gy0) * w + x - gx0), 4 * ((b.y0 + y) * b.W + x), 4 * ((b.y0 + y) * b.W + x) + 4);
   }
-  const g = { ch, w, h: hh, rgba, cx: gx0 - sx0, cy: gy0 - b.base, sw: sx1 - sx0 + 1 };
+  const g = { ch, w, h: hh, rgba, cx: gx0 - sx0, cy: gy0 - (base ?? b.base), sw: sx1 - sx0 + 1 };
   const r = escala === 1 ? g : escalar(g, escala);
   if (avance) r.sw = avance;
   return r;
 }
 
-function frase(piezas) {
-  const gs = piezas.map((p) => ({ ...glifo('?', p), hueco: p.hueco }));
-  let x = 0, x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-  const puestas = gs.map((g) => { const px = x + g.cx; x0 = Math.min(x0, px); x1 = Math.max(x1, px + g.w); y0 = Math.min(y0, g.cy); y1 = Math.max(y1, g.cy + g.h); x += g.sw + g.hueco; return [g, px]; });
-  const w = x1 - x0, h = y1 - y0, rgba = Buffer.alloc(w * h * 4);
-  for (const [g, px] of puestas) for (let yy = 0; yy < g.h; yy++) for (let xx = 0; xx < g.w; xx++) {
-    const s = 4 * (yy * g.w + xx), d = 4 * ((g.cy - y0 + yy) * w + px - x0 + xx), a = g.rgba[s + 3] / 255, ad = rgba[d + 3] / 255 * (1 - a), ao = a + ad;
-    if (ao <= 0) continue;
-    for (let c = 0; c < 3; c++) rgba[d + c] = Math.round((g.rgba[s + c] * a + rgba[d + c] * ad) / ao);
-    rgba[d + 3] = Math.round(ao * 255);
-  }
-  return { w, h, rgba, cx: x0, cy: y0, sw: x - gs.at(-1).hueco };
-}
-
-// Cambio de tamaño con filtro de área (alfa premultiplicado), para los dígitos y el punto de la ayuda.
+// Cambio de tamaño con filtro de área (alfa premultiplicado).
 function escalar(g, k) {
   const w = Math.max(1, Math.round(g.w * k)), h = Math.max(1, Math.round(g.h * k)), rgba = Buffer.alloc(w * h * 4);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -153,24 +126,20 @@ function escalar(g, k) {
 
 export function atlasLetras() {
   for (const t of TEXTOS) for (const ch of t) if (ch !== ' ' && !LETRAS[ch]) throw new Error(`letras: falta '${ch}' (de "${t}")`);
-  const glifos = Object.entries(LETRAS).map(([ch, d]) => glifo(ch, d));
-  const frases = AYUDAS.map(([texto, piezas], i) => ({ ...frase(piezas), texto, id: i }));
-  const todo = [...glifos, ...frases].sort((a, b) => b.h - a.h);
+  const glifos = Object.entries(LETRAS).map(([ch, d]) => glifo(ch, d)), porAlto = [...glifos].sort((a, b) => b.h - a.h);
   const W = 512, PAD = 2;
   let x = PAD, y = PAD, fila = 0;
-  for (const g of todo) { // estantes
+  for (const g of porAlto) { // estantes
     if (x + g.w + PAD > W) { x = PAD; y += fila + PAD; fila = 0; }
     g.ax = x; g.ay = y; x += g.w + PAD; fila = Math.max(fila, g.h);
   }
   let H = 32;
   while (H < y + fila + PAD) H *= 2;
   const rgba = Buffer.alloc(W * H * 4);
-  for (const g of todo) for (let yy = 0; yy < g.h; yy++) g.rgba.copy(rgba, 4 * ((g.ay + yy) * W + g.ax), 4 * yy * g.w, 4 * (yy + 1) * g.w);
+  for (const g of glifos) for (let yy = 0; yy < g.h; yy++) g.rgba.copy(rgba, 4 * ((g.ay + yy) * W + g.ax), 4 * yy * g.w, 4 * (yy + 1) * g.w);
   const lineas = [`letras ${glifos.length} ${SEPARACION} ${ESPACIO}`];
   for (const g of glifos) lineas.push([g.ch.charCodeAt(0), g.ax, g.ay, g.w, g.h, g.cx, g.cy, g.sw].join(' '));
-  lineas.push(`frases ${frases.length}`);
-  for (const f of frases) lineas.push([f.id, f.ax, f.ay, f.w, f.h, f.cx, f.cy, f.sw].join(' ') + ` ${f.texto}`);
-  return { w: W, h: H, rgba, glifos, frases, texto: lineas.join('\n') + '\n' };
+  return { w: W, h: H, rgba, glifos, texto: lineas.join('\n') + '\n' };
 }
 
 // Lo que se suma a vsobj2.dat.
@@ -179,9 +148,9 @@ export function archivosSala() {
   return [{ nombre: 'obj/tex_sala.bmt', datos: escribirBmt(a) }, { nombre: 'obj/sala.txt', datos: Buffer.from(a.texto, 'latin1') }];
 }
 
-// Vista previa: el atlas y algunos textos escritos con la misma regla que d3d/sala.c, sobre el fondo de la red.
+// Vista previa: el atlas y los textos del lobby escritos con la misma regla que d3d/sala.c, sobre el fondo de la red.
 export function vistaPrevia(carpeta) {
-  const a = atlasLetras(), fondo = textura('tex_sys19'), W = 800, H = 240, img = Buffer.alloc(W * H * 4);
+  const a = atlasLetras(), fondo = textura('tex_sys19'), W = 800, H = 300, img = Buffer.alloc(W * H * 4);
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const i = 4 * (Math.floor((y + 40) * 512 / 600) * 512 + Math.floor(x * 512 / 800));
     for (let c = 0; c < 3; c++) img[4 * (y * W + x) + c] = Math.round(fondo.rgba[i + c] * fondo.rgba[i + 3] / 255);
@@ -201,15 +170,11 @@ export function vistaPrevia(carpeta) {
       x += (g.sw + SEPARACION) * k;
     }
   };
-  escribir('Players: 12', 20, 40); escribir('Room', 300, 40); escribir('Ping 34 ms', 450, 40); escribir('Client', 650, 40);
-  a.frases.forEach((f, i) => { // las ayudas, tal cual
-    const x0 = 20 + (i % 2) * 380, base = 80 + Math.floor(i / 2) * 24;
-    for (let yy = 0; yy < f.h; yy++) for (let xx = 0; xx < f.w; xx++) {
-      const s = 4 * ((f.ay + yy) * a.w + f.ax + xx), al = a.rgba[s + 3] / 255, d = 4 * ((base + f.cy + yy) * W + x0 + f.cx + xx);
-      for (let c = 0; c < 3; c++) img[d + c] = Math.round(img[d + c] * (1 - al) + a.rgba[s + c] * al);
-    }
-  });
-  escribir('Server  Player  Rooms: 3  0123456789  (Room)  10/ 12', 20, 200);
+  escribir('Create Room', 20, 40); escribir('Enter Password', 300, 40); escribir('Players: 12', 560, 40);
+  const ayudas = TEXTOS.filter((t) => t.startsWith('Button'));
+  ayudas.forEach((t, i) => escribir(t, 20 + (i % 3) * 260, 90 + Math.floor(i / 3) * 22, 0.8));
+  escribir('Room  Rooms: 3  Password  Private  Settings  Ping 34 ms', 20, 200);
+  escribir('Server  Player  Client  0123456789  (Room)  10/ 12', 20, 250);
   mkdirSync(carpeta, { recursive: true });
   writeFileSync(join(carpeta, 'letras-atlas.png'), png({ w: a.w, h: a.h, rgba: a.rgba }));
   writeFileSync(join(carpeta, 'letras-muestra.png'), png({ w: W, h: H, rgba: img }));

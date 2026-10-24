@@ -14,7 +14,7 @@ typedef enum {
 
 typedef enum { EN_NADA, EN_BUSCANDO, EN_LISTO, EN_FALLO } Enlace; // camino directo con el rival
 
-typedef struct { int id, delay; char estado; char anfitrion[17], invitado[17]; } FilaSala; // estado: e, l, j
+typedef struct { int id, delay, privada; char estado; char anfitrion[17], invitado[17], nombre[25]; } FilaSala; // estado: e, l, j
 
 #define MAX_SALAS 64
 typedef struct {
@@ -27,7 +27,8 @@ typedef struct {
   FilaSala salas[MAX_SALAS];
   // La sala en la que está (sala_id 0: ninguna).
   int sala_id, soy_anfitrion, delay;
-  char sala_estado, anfitrion[17], invitado[17];
+  int sala_privada;
+  char sala_estado, anfitrion[17], invitado[17], sala_nombre[25];
   Enlace enlace;
   int ping;                 // ms, del camino directo
   int puerto;               // puerto UDP real del juego
@@ -38,9 +39,10 @@ extern Salas salas;
 
 void salas_cuadro(void);                 // en cada cuadro (dibujo.c), con el turno del invitado
 void sala_escena_red(uint32_t escena);   // la llama el update de la pantalla de red (analisis/parches.txt)
-void salas_crear(void);
-void salas_unirse(int id);
+void salas_crear(const char *nombre, const char *clave); // clave vacía: sala abierta
+void salas_unirse(int id, const char *clave);
 void salas_salir(void);
+void salas_echar(void);                  // el anfitrión saca al que entró
 void salas_empezar(void);
 void salas_cambiar_delay(void);          // 1..5, en la sala propia
 void salas_configurar(const char *nombre, const char *servidor);

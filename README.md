@@ -80,17 +80,21 @@ nuevos.
 
 ![El lobby de salas, con la cara de la pantalla de red del juego](docs/img/salas-lobby.jpg)
 
-"VS Human (Network)" ahora es un lobby de salas. Un servidor chico (`servidor/salas.mjs`, Node sin dependencias)
-mantiene las salas y presenta a los jugadores; la pelea va directo entre los dos, IP a IP, con el protocolo UDP del
-propio juego. El lobby tiene la cara de la pantalla de red original: el mismo fondo, el título, "Server On/Off",
-"Standby"/"Busy", la barra que late y el texto en MS Gothic con sombra, en los mismos lugares. Lo que el juego no tenía
-("Players", "Room", "Ping" y las ayudas de arriba) se escribe con letras recortadas de sus texturas
-(`tools/sala/letras.mjs`): la negrita de los nombres de escenarios y personajes y la cursiva fina de sus ayudas.
+"VS Human (Network)" ahora es un lobby de salas, en la PC y en Android: cada uno crea la suya (con nombre y, si
+quiere, clave) o entra a la de otro, y así juega con quien quiere; puede haber muchas partidas a la vez. Un servidor
+chico (`servidor/salas.mjs`, Node sin dependencias) mantiene las salas y presenta a los jugadores; la pelea va
+directo entre los dos, IP a IP, con el protocolo UDP del propio juego. El lobby tiene la cara de la pantalla de red
+original: el mismo fondo, el título, "Server On/Off", "Standby"/"Busy", la barra que late y el texto en MS Gothic con
+sombra, en los mismos lugares. Lo que el juego no tenía ("Create Room", "Password", "Players", "Ping", las ayudas de
+arriba) se escribe con letras recortadas de sus texturas (`tools/sala/letras.mjs`): la negrita de los nombres de
+escenarios y personajes y la del menú de configuración.
 
 | | |
 |---|---|
-| ![Una sala con los dos jugadores](docs/img/salas-sala.jpg) | ![Nombre y servidor](docs/img/salas-ajustes.jpg) |
-| La sala: el anfitrión elige el delay y empieza cuando hay camino directo | D: nombre y servidor (en Android, con el teclado en pantalla) |
+| ![Crear una sala](docs/img/salas-crear.jpg) | ![La clave de una sala privada](docs/img/salas-clave.jpg) |
+| C: crear una sala, con nombre y clave opcional | A sobre una sala con clave ("Key"): se escribe la clave |
+| ![Una sala con los dos jugadores](docs/img/salas-sala.jpg) | |
+| La sala: el anfitrión empieza (A), echa al otro (C) o cambia el delay (D) | |
 
 ```sh
 node servidor/salas.mjs     # en una PC o un servidor con el puerto 10995 (TCP y UDP) abierto
@@ -98,8 +102,11 @@ node servidor/salas.mjs     # en una PC o un servidor con el puerto 10995 (TCP y
 
 - En el juego, "VS Human (Network)". Sin servidor configurado lo busca en la red local y lo recuerda; si no, con
   D se escribe el nombre y la dirección (`ip:puerto` o un nombre de dominio).
-- C abre una sala; los demás la ven en Standby y entran con A. Cuando los dos se ven directo (aparece el ping), el
-  anfitrión aprieta A y empieza; D cambia el delay (1 a 5, el del juego: vale el del anfitrión).
+- C crea una sala: nombre (por defecto "<tu nombre>'s room") y clave (vacía = entra cualquiera). La lista muestra
+  cada sala con su anfitrión, cuántos hay (1/2) y "Key" si tiene clave; las que están en Standby esperan rival.
+- A entra a la sala elegida (si tiene clave, la pide). Cuando los dos se ven directo (aparece el ping), el anfitrión
+  aprieta A y empieza; C echa al que entró; D cambia el delay (1 a 5, el del juego: vale el del anfitrión); B cierra
+  la sala (o, al invitado, lo saca). Cinco claves mal seguidas y un minuto sin poder entrar a salas privadas.
 - De ahí sigue el modo red del juego: selección de personaje, pelea y revanchas. Al terminar se vuelve al lobby.
 - Teclado, mando, controles táctiles o tocando las filas; los botones son los del jugador 1 (o 2) de `config.dat`.
 
@@ -183,7 +190,8 @@ texturas (`BMT_`) del juego, para editar escenarios.
 `HINO_CAPTURAS=30,120` guarda esos cuadros · `HINO_TECLAS="300:2c:1,320:2c:0"` guion de teclas por cuadro ·
 `HINO_LOG_DIBUJOS=cuadros` lista cada llamada de dibujo · `HINO_LOG_ARCHIVOS=1` aperturas de archivos ·
 `HINO_OCULTA=1` sin ventana · `HINO_ANCHO=0|1332` modo ancho apagado o forzado · `HINO_SALAS=ip:puerto` y
-`HINO_NOMBRE` servidor de salas y nombre · `HINO_LOG_RED=1` cada paquete del juego en red.
+`HINO_NOMBRE` servidor de salas y nombre · `HINO_TEXTO="cuadro:texto|..."` lo que se escribe en los formularios del
+lobby · `HINO_LOG_RED=1` cada paquete del juego en red.
 
 ## Licencia
 
