@@ -961,6 +961,7 @@ void presentar(void) {
   }
   guion_teclas(cuadro);
   uint32_t bw = bb->w_gl; // el backbuffer real (más ancho que el del juego en modo ancho)
+  sala_dibujar(bb->fbo, (int)bw, (int)bb->h, (int)(bw - bb->w) / 2); // el lobby de salas, si está la pantalla de red
   if (en_lista(getenv("HINO_CAPTURAS"), cuadro)) {
     uint8_t *px = malloc((size_t)bw * bb->h * 4);
     glBindFramebuffer(GL_FRAMEBUFFER, bb->fbo);

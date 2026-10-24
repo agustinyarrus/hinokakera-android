@@ -58,3 +58,8 @@
 491edf d8 0d dc d6 54 00 => d8 0d 34 c1 54 00
 491fc1 d8 0d dc d6 54 00 => d8 0d 34 c1 54 00
 54db70 00 00 02 3e => 00 00 82 3d
+
+# ---- Salas (win32/salas.c, d3d/sala.c): juego en red con servidor de salas ----
+# El update de la pantalla "VS Human (Network)" (vtable 0x54dab8, this en ecx) avisa en cada cuadro que la
+# pantalla está, para que el lobby la tape y apriete por el jugador las teclas del modo red original.
+487030 { extern void sala_escena_red(uint32_t); sala_escena_red(ecx); }

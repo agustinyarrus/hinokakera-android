@@ -4,7 +4,8 @@
   "type": "module",
   "description": "Port de Hinokakera Chaotic Eclipse a Android por recompilación estática del ejecutable original",
   "scripts": {
-    "test": "node tools/escenario/prueba.mjs"
+    "test": "node tools/escenario/prueba.mjs && node servidor/prueba.mjs",
+    "salas": "node servidor/salas.mjs"
   },
   "dependencies": {
     "iced-x86": "^1.21.0"

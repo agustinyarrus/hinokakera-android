@@ -1,46 +1,43 @@
 // WS2_32: lo que usa el netplay (UDP). Sockets reales del anfitrión; sockaddr_in de IPv4 tiene el mismo
 // formato en Windows y en Android, así que se copia tal cual. WSAEventSelect: el evento se marca cuando
 // alguien lo espera y el socket tiene datos (socket_listo).
+// Para las salas (salas.c): el socket del juego también lleva los paquetes del lobby ("HKL..."), que no le llegan
+// al juego, y la dirección virtual IP_VIRTUAL se traduce a la del rival en los dos sentidos.
 #include <stdlib.h>
-#ifdef _WIN32
-#include <winsock2.h>
-#include <ws2tcpip.h>
-typedef SOCKET sock_t;
-#define SOCK_INVALIDO INVALID_SOCKET
-static int error_red(void) { return WSAGetLastError(); }
-static void no_bloqueante(sock_t s) { u_long v = 1; ioctlsocket(s, FIONBIO, &v); }
-#define cerrar_sock closesocket
-#else
-#include <arpa/inet.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <sys/select.h>
-#include <sys/socket.h>
-#include <unistd.h>
-typedef int sock_t;
-#define SOCK_INVALIDO (-1)
-static int error_red(void) {
-  switch (errno) {
-    case EWOULDBLOCK: return 10035;
-    case ECONNRESET: case ECONNREFUSED: return 10054;
-    case EADDRINUSE: return 10048;
-    case EMSGSIZE: return 10040;
-    default: return 10050; // WSAENETDOWN
-  }
-}
-static void no_bloqueante(sock_t s) { fcntl(s, F_SETFL, fcntl(s, F_GETFL) | O_NONBLOCK); }
-#define cerrar_sock close
-#endif
+#include "red.h"
 #include "win32.h" // después de los encabezados del sistema: define "mem"
 
 #define MAX_S 32
 static struct { sock_t s; int usado; uint32_t evento; } socks[MAX_S];
 static _Thread_local uint32_t ultimo; // WSAGetLastError es por hilo
+static int juego = -1, puerto_juego;  // el socket UDP que ató el juego y su puerto real
+static struct sockaddr_in rival;      // adónde va IP_VIRTUAL (sin_family 0: todavía a ninguna parte)
+// Desde dónde puede llegar el rival: detrás de un NAT simétrico sale por un puerto distinto según a qué dirección le
+// manda, y todo lo que llega de cualquiera de ellas es suyo (el juego lo ve como IP_VIRTUAL).
+static struct sockaddr_in visto[4];
+static int n_visto;
 #define H_SOCK(i) (0x200u + (uint32_t)(i))
 
 static int indice(uint32_t h) { return h >= 0x200u && h < 0x200u + MAX_S && socks[h - 0x200u].usado ? (int)(h - 0x200u) : -1; }
 static uint32_t falla(void) { ultimo = (uint32_t)error_red(); return 0xffffffffu; }
+
+int red_socket_juego(sock_t *s, int *puerto) {
+  if (juego < 0 || !socks[juego].usado) return 0;
+  *s = socks[juego].s; *puerto = puerto_juego;
+  return 1;
+}
+void red_rival(const struct sockaddr_in *real) {
+  if (real) rival = *real;
+  else { memset(&rival, 0, sizeof rival); n_visto = 0; }
+}
+static int es_rival(const struct sockaddr_in *a) {
+  for (int i = 0; i < n_visto; i++) if (visto[i].sin_addr.s_addr == a->sin_addr.s_addr && visto[i].sin_port == a->sin_port) return 1;
+  return 0;
+}
+void red_rival_visto(const struct sockaddr_in *de) {
+  if (es_rival(de)) return;
+  visto[n_visto < 4 ? n_visto++ : 3] = *de;
+}
 
 // HINO_LOG_RED=1: cada paquete que manda o recibe el juego (tipo, tamaño, dirección y los primeros bytes).
 static void log_paquete(const char *que, const struct sockaddr_in *a, const uint8_t *d, int n) {
@@ -82,6 +79,7 @@ API(W_closesocket) {
   if (i < 0) { ultimo = 10038; VOLVER(1, 0xffffffffu); }
   cerrar_sock(socks[i].s);
   socks[i].usado = 0;
+  if (i == juego) juego = -1;
   VOLVER(1, 0);
 }
 API(W_bind) {
@@ -89,7 +87,14 @@ API(W_bind) {
   if (i < 0) { ultimo = 10038; VOLVER(3, 0xffffffffu); }
   struct sockaddr_in a;
   memcpy(&a, MEM + ARG(1), sizeof a);
-  if (bind(socks[i].s, (struct sockaddr *)&a, sizeof a) != 0) VOLVER(3, falla());
+  int r = bind(socks[i].s, (struct sockaddr *)&a, sizeof a);
+  // Ocupado (otra copia del juego en la misma máquina): los siguientes. El juego sigue creyendo que es el suyo.
+  for (int k = 1; r != 0 && error_red() == 10048 && k <= 20; k++) {
+    a.sin_port = htons((uint16_t)(ntohs(((struct sockaddr_in *)(MEM + ARG(1)))->sin_port) + k));
+    r = bind(socks[i].s, (struct sockaddr *)&a, sizeof a);
+  }
+  if (r != 0) VOLVER(3, falla());
+  juego = i; puerto_juego = ntohs(a.sin_port);
   VOLVER(3, 0);
 }
 API(W_sendto) {
@@ -97,6 +102,10 @@ API(W_sendto) {
   if (i < 0) { ultimo = 10038; VOLVER(6, 0xffffffffu); }
   struct sockaddr_in a;
   memcpy(&a, MEM + ARG(4), sizeof a);
+  if (ntohl(a.sin_addr.s_addr) == IP_VIRTUAL) {
+    if (!rival.sin_family) VOLVER(6, ARG(2)); // todavía no hay rival: como si hubiera salido
+    a = rival;
+  }
   int n = (int)sendto(socks[i].s, (const char *)MEM + ARG(1), (int)ARG(2), (int)ARG(3), (struct sockaddr *)&a, sizeof a);
   log_paquete("->", &a, MEM + ARG(1), n);
   VOLVER(6, n < 0 ? falla() : (uint32_t)n);
@@ -112,7 +121,13 @@ API(W_recvfrom) {
   uint32_t err = n < 0 ? (uint32_t)error_red() : 0; // antes de tomar el turno: el candado puede pisar el error
   invitado_tomar();
   if (n < 0) { ultimo = err; VOLVER(6, 0xffffffffu); }
+  // Del lobby: no es para el juego (el socket es no bloqueante, así que vuelve a preguntar enseguida).
+  if (n >= 4 && !memcmp(MEM + buf, "HKL", 3) && salas_paquete(MEM + buf, n, &a)) { ultimo = 10035; VOLVER(6, 0xffffffffu); }
   log_paquete("<-", &a, MEM + buf, n);
+  if (rival.sin_family && es_rival(&a)) {
+    rival = a; // se le contesta por donde llegó lo último (detrás de un NAT, es el puerto que está abierto)
+    a.sin_addr.s_addr = htonl(IP_VIRTUAL); a.sin_port = htons(PUERTO_JUEGO);
+  }
   if (ARG(4)) memcpy(MEM + ARG(4), &a, sizeof a);
   if (ARG(5)) M32(ARG(5)) = sizeof a;
   VOLVER(6, (uint32_t)n);

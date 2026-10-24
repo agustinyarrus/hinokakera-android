@@ -76,6 +76,48 @@ npm test                                # prueba las herramientas de escenarios 
 El código traducido con los parches necesita esos datos: sin ellos la rueda no encuentra la textura ni el escenario
 nuevos.
 
+## Juego en red con salas
+
+![El lobby de salas, con la cara de la pantalla de red del juego](docs/img/salas-lobby.jpg)
+
+"VS Human (Network)" ahora es un lobby de salas. Un servidor chico (`servidor/salas.mjs`, Node sin dependencias)
+mantiene las salas y presenta a los jugadores; la pelea va directo entre los dos, IP a IP, con el protocolo UDP del
+propio juego. El lobby tiene la cara de la pantalla de red original: el mismo fondo, el título, "Server On/Off",
+"Standby"/"Busy", la barra que late y el texto en MS Gothic con sombra, en los mismos lugares. Lo que el juego no tenía
+("Players", "Room", "Ping" y las ayudas de arriba) se escribe con letras recortadas de sus texturas
+(`tools/sala/letras.mjs`): la negrita de los nombres de escenarios y personajes y la cursiva fina de sus ayudas.
+
+| | |
+|---|---|
+| ![Una sala con los dos jugadores](docs/img/salas-sala.jpg) | ![Nombre y servidor](docs/img/salas-ajustes.jpg) |
+| La sala: el anfitrión elige el delay y empieza cuando hay camino directo | D: nombre y servidor (en Android, con el teclado en pantalla) |
+
+```sh
+node servidor/salas.mjs     # en una PC o un servidor con el puerto 10995 (TCP y UDP) abierto
+```
+
+- En el juego, "VS Human (Network)". Sin servidor configurado lo busca en la red local y lo recuerda; si no, con
+  D se escribe el nombre y la dirección (`ip:puerto` o un nombre de dominio).
+- C abre una sala; los demás la ven en Standby y entran con A. Cuando los dos se ven directo (aparece el ping), el
+  anfitrión aprieta A y empieza; D cambia el delay (1 a 5, el del juego: vale el del anfitrión).
+- De ahí sigue el modo red del juego: selección de personaje, pelea y revanchas. Al terminar se vuelve al lobby.
+- Teclado, mando, controles táctiles o tocando las filas; los botones son los del jugador 1 (o 2) de `config.dat`.
+
+Cómo funciona: el servidor solo conoce nombres y salas. Cuando una sala se llena, a cada uno le pasa la dirección del
+otro: la pública (la que ve el servidor en un UDP que se le manda desde el socket del juego) y la de su red local.
+Desde ese mismo socket los dos se mandan paquetes hasta encontrarse (perforación de NAT), y desde ahí cada uno le
+contesta al otro por donde llegó lo último suyo, así anda también detrás de un NAT simétrico de un solo lado. Al
+empezar, el lobby aprieta por los jugadores las teclas del modo red original (Server On, pedir la pelea, aceptarla):
+`net.txt` tiene una sola entrada, `127.77.0.1`, que `win32/ws2_32.c` traduce a la dirección del rival.
+
+![Pelea en red entre la PC y Android (emulador detrás de NAT)](docs/img/salas-pelea.jpg)
+
+Para que el modo red del original anduviera en el port hubo que arreglar dos cosas: `WSAGetLastError` se perdía al
+retomar el turno del candado del invitado (el hilo que recibe se moría) y el anfitrión espera la confirmación en un
+bucle que solo lee `timeGetTime`, que ahora cede el turno. Límites: si los dos están detrás de NAT simétrico (algunas
+redes móviles con CGNAT) puede no haber camino directo, y no hay relevo por el servidor; el puerto del servidor tiene
+que ser alcanzable; cada jugador ve la IP del otro, como en cualquier juego IP a IP.
+
 ## Qué tan fiel es
 
 ![Original, port en Android y diferencias](docs/img/fidelidad.jpg)
@@ -104,8 +146,8 @@ Galaxy A52 real corrió casi 8 minutos seguidos (27.900 cuadros) sin cortes.
   candado del invitado hace que los hilos del juego no corran a la vez: el juego cuenta con el orden de memoria de
   x86, y en ARM real el hilo de la música leía datos a medio escribir.
 - **`win32/`** — las APIs de Windows que usa el juego: archivos (los datos son solo lectura; en Android, assets del
-  APK), ventanas y mensajes, DirectInput con buffer de mouse, DirectSound con mezclador propio, Winsock (UDP real),
-  glifos de MS Gothic (GDI real en Windows, caché pregenerada en Android).
+  APK), ventanas y mensajes, DirectInput con buffer de mouse, DirectSound con mezclador propio, Winsock (UDP real;
+  encima, el cliente de salas), glifos de MS Gothic (GDI real en Windows, caché pregenerada en Android).
 - **`d3d/`** — Direct3D 9 sobre OpenGL ES 3: función fija generada como GLSL, `vs_1_x` traducidos, D3DX (texturas
   y mipmaps idénticos a los de la dll real).
 - **Pantalla ancha sin bordes**: el backbuffer real mide lo que la pantalla a 600 de alto (1332×600 en un celu
@@ -124,7 +166,7 @@ paquete `SDL3-devel-3.4.18-VC.zip` y `sdl3-android/SDL3-3.4.18.aar`).
 ```sh
 npm install
 node recomp/traducir.mjs <ruta>/hinokakera.exe     # genera gen/ (C, imagen.bin) desde tu copia del juego
-node tools/escenario/playa.mjs                     # los escenarios nuevos (los pide el código parcheado)
+node tools/escenario/playa.mjs                     # los escenarios nuevos y la letra del lobby (los pide el código parcheado)
 node tools/compilar.mjs                            # Windows: build/win/hinokakera.exe
 # glifos para Android: compilar tools/c/gen_glifos.c y correr gen_glifos.exe <hinokakera.exe> gen/glifos.bin
 node tools/icono.mjs                               # ícono del APK, sacado del exe
@@ -140,7 +182,8 @@ texturas (`BMT_`) del juego, para editar escenarios.
 
 `HINO_CAPTURAS=30,120` guarda esos cuadros · `HINO_TECLAS="300:2c:1,320:2c:0"` guion de teclas por cuadro ·
 `HINO_LOG_DIBUJOS=cuadros` lista cada llamada de dibujo · `HINO_LOG_ARCHIVOS=1` aperturas de archivos ·
-`HINO_OCULTA=1` sin ventana · `HINO_ANCHO=0|1332` modo ancho apagado o forzado.
+`HINO_OCULTA=1` sin ventana · `HINO_ANCHO=0|1332` modo ancho apagado o forzado · `HINO_SALAS=ip:puerto` y
+`HINO_NOMBRE` servidor de salas y nombre · `HINO_LOG_RED=1` cada paquete del juego en red.
 
 ## Licencia
 

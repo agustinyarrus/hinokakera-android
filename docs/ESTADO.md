@@ -210,3 +210,75 @@ del juego y las corridas de prueba se cortan antes).
   en Outskirt Hill.
 - `cmd.exe` corta los argumentos de un `.bat` en cada `;`: `sdkmanager` recibe los paquetes en un archivo
   (`--package_file`).
+
+## 2026-10-23 (7) — Juego en red con salas: servidor, lobby y pelea IP a IP
+
+**El modo red del original** (con REA/Ghidra y `tools/dis.mjs`). Objeto de red en `[[escena+8]+34h]`, creado al
+arrancar (WSAStartup en 0x49b350): nombre en +4, comentario en +18h, puerto en +7Ch y hasta 100 entradas de 0x8B8
+bytes desde +8BCh (IP en +90h, puerto en +78h, estado en +88h: 0 Unknown, 1 Standby, 2 Busy). `net.txt` se lee al
+entrar a la pantalla (0x49b650) y ahí se abre el socket UDP (0x49b490: no bloqueante por WSAEventSelect, se ata al
+PORT) con un hilo que recibe (0x49bc30, sondea cada 1 ms) y otro que pregunta el estado de todas las entradas cada
+4 s (0x49c2e0). Mensajes (primer byte): 0x01 estado? → 0x02 estado (solo en Server On; trae nombre, comentario,
+delay y la configuración del servidor), 0x0B pedido de pelea → 0x0D aceptado / 0x0E rechazado / 0x0F ocupado →
+0x11 confirmación, y en la pelea 0x15 con el número de cuadro y 24 bytes de entradas. La respuesta 0x02 se asocia a
+la entrada por IP de origen + el puerto que viene adentro; todo lo demás se contesta a la dirección de origen.
+Pantalla de red (vtable 0x54dab8: init 0x486570, update 0x487030, dibujo 0x487a90): `[+C0h]` 0 lista, 1 esperando
+respuesta, 3 le piden pelea (A acepta con 0x49c4d0, B rechaza), 0xB–0xD mensajes; `[+B0h]` Server On (C);
+`[+B4h]` delay (D, 1–5); al aceptar sale a la escena 0x1C (selección de personaje) y `[red+370D8h]` queda en 1
+mientras dura el juego en red.
+
+**Dos arreglos para que el modo red original ande en el port** (probado con dos copias en la PC, `net.txt` a mano):
+- `W_recvfrom` leía `WSAGetLastError` después de retomar el turno del candado del invitado, que lo pisaba: el juego
+  veía un error desconocido y el hilo que recibe terminaba (nunca llegaba nada). Ahora el error se guarda antes, y
+  `WSAGetLastError` es por hilo.
+- El anfitrión espera la confirmación 0x11 hasta 5 s en un bucle que solo llama a `timeGetTime` sin soltar el turno:
+  el hilo que recibe no corría y la aceptación siempre fallaba ("通信の不通によりキャンセル"). `timeGetTime` cede el
+  turno (`invitado_ceder`, barato si nadie espera).
+Con eso las dos copias llegan a la selección y la pelea va sincronizada.
+
+**Salas** (pedido: un servidor que solo mantenga salas y presente a los jugadores, pelea IP a IP, con el diseño del
+juego):
+- `servidor/salas.mjs`: Node sin dependencias, TCP y UDP en el 10995. Líneas con campos separados por tabulador
+  (HOLA, CREAR, UNIRSE, SALIR, DELAY, EMPEZAR, VOLVER, PING / BIENVENIDO, LISTA, SALA, PAR, IR, AVISO). Por UDP
+  recibe "HKLR"+token desde el socket del juego (así ve la dirección pública que le dio el NAT) y contesta "HKLB"
+  (búsqueda en la red local). Con la sala llena manda PAR a cada uno con la dirección pública y la local del otro y
+  una clave. Límites: 512 bytes por línea, 16 conexiones por IP, 45 s sin noticias y afuera. `servidor/prueba.mjs`
+  (en `npm test`) lo prueba con dos clientes de mentira.
+- `win32/salas.c`: el cliente. Escribe `net.txt` en la carpeta de escritura (gana a la de datos) con una sola
+  entrada, `127.77.0.1:10996`; `ws2_32.c` traduce esa dirección a la del rival al mandar y al revés al recibir, filtra
+  los paquetes "HKL…" del lobby, y si el 10996 está ocupado (dos copias en una máquina) ata el siguiente. Perfora el
+  NAT desde el socket del juego (paquetes P/Q con la clave, cada 100 ms hasta la primera ida y vuelta y después uno
+  por segundo, que da el ping) y, al empezar, aprieta por el jugador las teclas del modo red original con
+  `teclas_sala[]` (C = Server On en el anfitrión mientras tiene sala, A sobre la entrada cuando está en Standby en el
+  invitado, A para aceptar en el anfitrión si el pedido viene de la dirección virtual). La pantalla de red se
+  detecta con un fragmento de C en su update (`analisis/parches.txt`, 487030). Mientras el lobby se ve, DirectInput
+  no le pasa al juego nada más que esas teclas.
+- `d3d/sala.c`: el lobby, dibujado dentro del backbuffer antes de las capturas (sale en `HINO_CAPTURAS`) con las
+  texturas de la pantalla de red leídas de los `.dat` (fondo `tex_sys19` reflejado a los costados, título,
+  Server On/Off, Port, Delay, Page, Unknown/Standby/Busy y la barra que late `(sin(t·0,1)+2)/8` de `tex_sys79`), la
+  MS Gothic de 24 con sombra de 1 px y las mismas posiciones (filas cada 45 desde y 172, texto en x 143 y 354).
+  Entra y sale con fundido a negro, tapando la pantalla original desde su primer cuadro.
+- `tools/sala/letras.mjs` (lo corre `playa.mjs`, va en `vsobj2.dat` como `obj/tex_sala.bmt` + `obj/sala.txt`): 51
+  letras recortadas de los nombres de escenarios (`tex_sys24`), de personajes (`tex_sys25`), de la red (`tex_sys79`)
+  y los dígitos de la configuración (`tex_sys69`, a tamaño natural como los usa la red), con su línea base; y siete
+  ayudas armadas con pedazos de la cursiva fina de las ayudas de la red (la A y la P salen de Replay, `tex_sys92`,
+  achicadas a la misma altura). No hay b, E, F, I, J, N, V, Y, Z ni p minúscula: los textos nuevos se eligieron con
+  lo que hay ("Button A···Play", "Button D···Player / Server").
+
+**Probado**: dos copias en la PC contra el servidor local (crear, entrar, cambiar el delay, que viaja en el 0x0D del
+juego, empezar, selección y pelea sincronizadas; si uno se cae, el otro vuelve solo al lobby); búsqueda del servidor
+en la red local; Android (emulador x86_64, detrás del NAT de QEMU) contra la PC: entra, se conecta y pelea al primer
+intento, a 48 fps los dos (el juego en red va al paso del más lento).
+
+**Sin probar**: el celu real (la depuración inalámbrica estaba apagada) e Internet con NAT de verdad en los dos
+lados. Si los dos están detrás de NAT simétrico no hay camino directo (no hay relevo por el servidor, a propósito).
+
+**Trampas**
+- El NAT de QEMU es simétrico: el emulador sale por puertos distintos según el destino. Primero la PC le mandaba a
+  un puerto y el pedido de pelea llegaba de otro, el lobby no lo reconocía y lo rechazaba (0x0E). Ahora todo lo que
+  llega con la clave de la sala es del rival y se le contesta por donde llegó lo último (como RTP simétrico).
+- Con `MSYS_NO_PATHCONV=1` (para adb) Git Bash ya no convierte `/c/...`: el exe de Windows y node necesitan
+  `cygpath -w`.
+- La MS Gothic al doble de ancho no entra en una sola fila de 1024: el atlas va en filas.
+- Mandar la difusión de búsqueda necesita `SO_BROADCAST`; la respuesta del servidor vuelve directa (sin bloqueo de
+  multicast en Android).

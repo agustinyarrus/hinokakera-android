@@ -135,6 +135,7 @@ API(D9_CreateDevice) {
   recurso_addref(&d->rt->r);
   if (d->ds) recurso_addref(&d->ds->r);
   tactil_iniciar(v->sdl);
+  sala_iniciar(v->sdl);
   dibujo_iniciar();
   estado_inicial(d);
   configurar_ventana(d);

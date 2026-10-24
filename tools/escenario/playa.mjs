@@ -14,6 +14,7 @@ import { Lienzo, azar, fbm, perlin, sat, suave, mezclar, hex, trazo } from './pi
 import { Malla, unit, cruz, resta, suma, escalar, punto, rotY } from './geometria.mjs';
 import { vista } from './vista.mjs';
 import { principal as noche, sacar, elevAV, vAElev, domo } from './moonlit.mjs';
+import { archivosSala } from '../sala/letras.mjs';
 
 const PNG = process.argv.includes('--png') ? process.argv[process.argv.indexOf('--png') + 1] : null;
 export const ESCENARIO = 9, LUGAR = 7; // número en field.dat y lugar en la rueda (ver analisis/parches.txt)
@@ -780,6 +781,7 @@ export function principal() {
   campo.push(e);
   salidas.set('dat/field.dat', escribirCampo(campo));
   nombres(); miniaturas(e);
+  for (const { nombre, datos } of archivosSala()) salidas.set(nombre, datos); // la letra del lobby de salas (d3d/sala.c)
   if (PNG) for (const [nombre, cam] of [['vista-playa', [0, 1, -5.7, 90, 0]], ['vista-izq', [0, 1, -5.7, 140, 1]], ['vista-der', [0, 1, -5.7, 25, 1]], ['vista-atras', [0, 1, 5.7, 270, 1]]]) {
     const ang = cam[3], pos = [-Math.cos(ang * RAD) * 5.7, cam[1], -Math.sin(ang * RAD) * 5.7];
     const G = render(e, 1332, 600, { pos, rumbo: ang, cabeceo: cam[4], fovV: 30.6 }), V = new Lienzo(1332, 600);

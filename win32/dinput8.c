@@ -1,6 +1,7 @@
 // DINPUT8: teclado (estado de 256 bytes con códigos DIK), mouse y mandos de SDL como joysticks de DirectInput.
 // teclas_virtuales[] lo escriben los controles táctiles (Android): se suma al teclado real.
 #include "win32.h"
+#include "salas.h"
 #include "teclas.h"
 #include "../d3d/com.h"
 #include <SDL3/SDL.h>
@@ -176,6 +177,14 @@ API(DD_GetDeviceState) {
   DispEntrada *d = DEV;
   uint32_t n = ARG(1), p = ARG(2);
   memset(MEM + p, 0, n);
+  if (salas.visible) { // el lobby tapa la pantalla de red: el juego solo ve lo que aprieta el lobby por el jugador
+    if (d->tipo == D_TECLADO) for (uint32_t i = 0; i < n && i < 256; i++) if (teclas_sala[i]) M8(p + i) = 0x80;
+    if (d->tipo == D_JOY && n >= 80) {
+      for (int i = 0; i < 4; i++) M32(p + OFS_EJE[i]) = (uint32_t)((d->max[i] + d->min[i]) / 2);
+      M32(p + 32) = M32(p + 36) = M32(p + 40) = M32(p + 44) = 0xffffffffu;
+    }
+    VOLVER(3, 0);
+  }
   if (d->tipo == D_TECLADO) {
     const bool *k = SDL_GetKeyboardState(NULL);
     for (const Tecla *t = TECLAS; t->sdl; t++) if (k[t->sdl] && t->dik < n) M8(p + t->dik) = 0x80;

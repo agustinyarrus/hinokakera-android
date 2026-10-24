@@ -150,6 +150,9 @@ extern int imagen_juego[7];
 // Controles táctiles (tactil.c).
 void tactil_iniciar(SDL_Window *w);
 void tactil_dibujar(SDL_Window *w, int ww, int wh);
+// Lobby de salas (sala.c).
+void sala_iniciar(SDL_Window *w);
+void sala_dibujar(GLuint fbo, int bw, int bh, int corrimiento);
 
 // vs.c
 ShaderV *vs_traducir(const char *fuente);
