@@ -11,6 +11,7 @@ static int error_red(void) { return WSAGetLastError(); }
 static void no_bloqueante(sock_t s) { u_long v = 1; ioctlsocket(s, FIONBIO, &v); }
 #define cerrar_sock closesocket
 #else
+#include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <netinet/in.h>
@@ -35,11 +36,22 @@ static void no_bloqueante(sock_t s) { fcntl(s, F_SETFL, fcntl(s, F_GETFL) | O_NO
 
 #define MAX_S 32
 static struct { sock_t s; int usado; uint32_t evento; } socks[MAX_S];
-static uint32_t ultimo;
+static _Thread_local uint32_t ultimo; // WSAGetLastError es por hilo
 #define H_SOCK(i) (0x200u + (uint32_t)(i))
 
 static int indice(uint32_t h) { return h >= 0x200u && h < 0x200u + MAX_S && socks[h - 0x200u].usado ? (int)(h - 0x200u) : -1; }
 static uint32_t falla(void) { ultimo = (uint32_t)error_red(); return 0xffffffffu; }
+
+// HINO_LOG_RED=1: cada paquete que manda o recibe el juego (tipo, tamaño, dirección y los primeros bytes).
+static void log_paquete(const char *que, const struct sockaddr_in *a, const uint8_t *d, int n) {
+  static int log = -1;
+  if (log < 0) log = getenv("HINO_LOG_RED") != NULL;
+  if (!log || n <= 0) return;
+  const uint8_t *ip = (const uint8_t *)&a->sin_addr;
+  char hex[3 * 24 + 1] = {0};
+  for (int i = 0; i < n && i < 24; i++) snprintf(hex + 3 * i, 4, "%02x ", d[i]);
+  fprintf(stderr, "red: %s %u.%u.%u.%u:%u tipo %02x, %d bytes: %s\n", que, ip[0], ip[1], ip[2], ip[3], ntohs(a->sin_port), d[0], n, hex);
+}
 
 API(W_WSAStartup) {
 #ifdef _WIN32
@@ -86,6 +98,7 @@ API(W_sendto) {
   struct sockaddr_in a;
   memcpy(&a, MEM + ARG(4), sizeof a);
   int n = (int)sendto(socks[i].s, (const char *)MEM + ARG(1), (int)ARG(2), (int)ARG(3), (struct sockaddr *)&a, sizeof a);
+  log_paquete("->", &a, MEM + ARG(1), n);
   VOLVER(6, n < 0 ? falla() : (uint32_t)n);
 }
 API(W_recvfrom) {
@@ -96,8 +109,10 @@ API(W_recvfrom) {
   uint32_t buf = ARG(1), tam = ARG(2), flags = ARG(3);
   invitado_soltar(); // puede bloquear (socket bloqueante): los otros hilos del juego siguen
   int n = (int)recvfrom(socks[i].s, (char *)MEM + buf, (int)tam, (int)flags, (struct sockaddr *)&a, &l);
+  uint32_t err = n < 0 ? (uint32_t)error_red() : 0; // antes de tomar el turno: el candado puede pisar el error
   invitado_tomar();
-  if (n < 0) VOLVER(6, falla());
+  if (n < 0) { ultimo = err; VOLVER(6, 0xffffffffu); }
+  log_paquete("<-", &a, MEM + buf, n);
   if (ARG(4)) memcpy(MEM + ARG(4), &a, sizeof a);
   if (ARG(5)) M32(ARG(5)) = sizeof a;
   VOLVER(6, (uint32_t)n);
