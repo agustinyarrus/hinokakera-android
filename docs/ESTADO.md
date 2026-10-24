@@ -149,3 +149,64 @@ manda un dedo), todas las pantallas del modo historia y extras.
 - Los píxeles casi transparentes de los montes originales eran blancos y no se veían; pasados a azul oscuro eran
   rayitas en el cielo: se corta el alfa bajo.
 - Los períodos del ruido tienen que ser enteros o el panorama no empalma.
+
+## 2026-10-23 (6) — Sunlit Shore: un escenario nuevo de playa
+
+**Hecho**
+- `node tools/escenario/playa.mjs [--png carpeta]` arma primero Outskirt Hill de noche (`moonlit.mjs`) y le suma la
+  playa al mismo `mods/vsobj2.dat`: `field.dat` con 10 escenarios (la playa es el 9), la rueda con `tex_sys24`
+  (nombres, 256x512) y `tex_sys42` (miniaturas, 512x1024) nuevas, 7 modelos (`mod_f100`–`f106`) y 12 texturas
+  (`tex_f100`–`f111`). Sale igual byte a byte en cada corrida.
+- La rueda de escenarios (la escena de selección: 0x48f070 la arma, 0x48fb10 la mueve, 0x490af0 la dibuja):
+  `[esi+100h]` lugar, `[esi+10Ch]` cantidad (8), `[esi+108h]` animación. Lugar = escenario de 0 a 6; el lugar 7 era
+  Random y al elegirlo pasaba a 9, la marca de "al azar". El que arma la pelea (0x49540a) aceptaba 0–8 y con 9 o
+  negativo hacía `rand16 % 7` (también en arcade, 0x495f55, y en COM contra COM, 0x495fb5). La elección se guarda en
+  la partida (`[+0F00h]`, que al cargar se valida de 0 a 9 en 0x49a4e7) y de ahí sale el lugar inicial (tope 7).
+- `analisis/parches.txt`, que `recomp/parches.mjs` aplica al traducir (verifica los bytes originales): 34
+  instrucciones y una constante, más 5 fragmentos de C. Nueve lugares (7 = playa, 8 = Random); Random elegido = -1
+  y la marca guardada = 10; la pelea acepta 0–9 y el lugar 7 es el escenario 9; el azar es `% 8` con 7 → 9. Las
+  miniaturas dividen la v por 1024 y los nombres por 512 con constantes que ya estaban (1/1024 en 54d6a0, 1/512 en
+  54c134) y Random dejó de ser un caso aparte (`cmp` con 7Fh, nunca): usa su franja como los demás. Las franjas 9 y
+  15 de la miniatura repiten la 0 y Random porque el anterior y el siguiente se dibujan sin módulo (-1 y 9).
+- Nada más depende del número de escenario: los efectos solo preguntan si es la nieve (2), así que la playa usa el
+  polvo color arena, y `field.dat` se carga por índice con la cantidad del archivo (0x4984b0 valida escenario <
+  cantidad). Arcade y la historia siguen con sus escenarios.
+- El motor, para pintar escenarios: el shader de los modelos iluminados (VS 2) hace
+  `max(difusa · (N·L + 1) / 2, ambiente) × color del material`, recortado a 1 (c8 = 1, 1, 0.5, ...); la prueba de
+  alfa compara con 64 (`GREATEREQUAL`); y se descartan las caras de espaldas (`CULL_CCW`): se ve la de
+  (b − a) × (c − a). `vista.mjs` ahora hace las tres cosas como el juego.
+- Efectos de partículas: 1 polvo de desierto, 2 polvo marrón, 3 motas blancas, 4 un resplandor rosado. La playa no
+  usa ninguno: las motas parecían nieve sobre la arena.
+- El nombre de la rueda se arma con las letras de los otros nombres (componentes conexas del trazo blanco; la sombra
+  va con el trazo más cercano), así tiene la misma tipografía.
+- APK release de 787,5 MB, firmado con `android/hino.keystore`: mismo certificado que el anterior, se instala encima.
+  El entorno Android de esta máquina se armó con `_scratch/pacmini-android/instalar.sh` (JDK 21, SDK, NDK, CMake y
+  Gradle, con sus sumas).
+
+**Probado en la PC**: la rueda da la vuelta completa en los dos sentidos (con la animación entre Random y Lost
+Grave -Blue-), pelea en la playa a 60 fps con la cámara girando unos 90° para cada lado, Random y Arcade.
+
+**Probado en el emulador** (AVD de 1080x2400 con Android 15 y WHPX, armado en `_scratch/pacmini-android/avd`): el
+APK se instala encima, la rueda y la pelea en la playa se ven igual que en la PC. Sin capturas de por medio, Tower of
+Pray va a 60 fps, Outskirt Hill de noche a 19 (en el A52 real, a 60) y la playa a 47: el emulador no sirve para medir
+el celu, pero la playa le pesa menos que la noche. Con capturas baja a ~17: en Android cada captura es cara.
+
+**Probado en el Galaxy A52** (adb inalámbrico: el vínculo anduvo pero el puerto de conexión no apareció por mDNS; era
+el 40565 de siempre): instalado encima con la misma firma, pelea en la playa a 59–60 fps de punta a punta (49,6 solo
+en la carga y la presentación) con `_scratch/hino/playa/celu-playa.sh`, que espera a que desbloqueen el celu, mide sin
+capturas en el medio y al final borra `entorno.txt` y la carpeta de prueba.
+
+**Sin probar**: juego en red contra un original sin parche (si se elige la
+playa, el otro no tiene el escenario 9); que la rueda recuerde la playa entre sesiones (la partida se guarda al salir
+del juego y las corridas de prueba se cortan antes).
+
+**Trampas**
+- Bajar la arena hacia el agua esconde la orilla detrás del borde de la zona plana (la cámara va a ~1 de altura): la
+  bajada es de 0.15 nomás.
+- Un modelo no puede pasar de 65535 vértices: los promontorios van aparte (`mod_f106`).
+- Dos instancias del port a la vez dejan un `record.dat` a medio escribir en su carpeta de escritura y la siguiente
+  corrida se cae temprano (acceso inválido en 384f3cf8): una por vez, o carpeta nueva.
+- En la presentación de cada ronda el juego dibuja una línea horizontal que cruza la pantalla: es suya, también sale
+  en Outskirt Hill.
+- `cmd.exe` corta los argumentos de un `.bat` en cada `;`: `sdkmanager` recibe los paquetes en un archivo
+  (`--package_file`).

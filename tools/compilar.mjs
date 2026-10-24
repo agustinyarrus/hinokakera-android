@@ -6,7 +6,7 @@ import { spawn } from 'node:child_process';
 import { availableParallelism } from 'node:os';
 
 const raiz = new URL('..', import.meta.url).pathname.replace(/^\/(\w:)/, '$1');
-const CLANG = 'C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/Llvm/x64/bin/clang.exe';
+const CLANG = ['Community', 'Professional', 'Enterprise'].map(e => `C:/Program Files/Microsoft Visual Studio/2022/${e}/VC/Tools/Llvm/x64/bin/clang.exe`).find(existsSync);
 const SDL = join(raiz, 'terceros/sdl3-vc/SDL3-3.4.18');
 const rastro = process.argv.includes('--rastro');
 const cacheGlifos = process.argv.includes('--cache-glifos'); // texto desde glifos.bin como en Android

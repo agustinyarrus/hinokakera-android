@@ -1,0 +1,60 @@
+# Cambios al exe que recomp/traducir.mjs aplica antes de traducir. Dos clases de línea:
+#   <va> <bytes originales> => <bytes nuevos>   reemplaza bytes del exe (se verifica el original)
+#   <va> { código C }                           se ejecuta antes de esa instrucción; los registros son las
+#                                               variables locales (eax, ecx...) y la memoria se lee con M32()
+
+# ---- Sunlit Shore: un escenario nuevo (el 9 de field.dat) en la rueda de selección ----
+# La rueda pasa de 8 lugares (escenarios 0-6 y Random) a 9: lugares 0-6 = escenarios 0-6, 7 = la playa
+# (escenario 9) y 8 = Random. Como 9 era la marca de "al azar", el Random elegido pasa a ser -1 y la marca
+# guardada en la partida, 10. Necesita los datos de tools/escenario/playa.mjs (field.dat con 10 escenarios y
+# las texturas de la rueda más altas).
+48fab4 c7 86 0c 01 00 00 08 00 00 00 => c7 86 0c 01 00 00 09 00 00 00
+# Lugar inicial de la rueda según el último escenario: la playa al 7; 7, 8 (los de la historia) y la marca 10
+# de Random, al 8.
+4901d9 { int32_t v = (int32_t)M32(esi + 0x100); M32(esi + 0x100) = v == 9 ? 7 : v >= 7 ? 8 : v; }
+4901df b8 07 00 00 00 => b8 08 00 00 00
+490841 c7 86 00 01 00 00 09 00 00 00 => c7 86 00 01 00 00 ff ff ff ff
+# Al empezar la pelea: el lugar 7 es el escenario 9, que ahora vale (antes de 0 a 8).
+495410 { if (eax == 7) eax = 9; }
+495414 83 f8 09 => 83 f8 0a
+49542f c7 80 00 0f 00 00 09 00 00 00 => c7 80 00 0f 00 00 0a 00 00 00
+49a4e7 83 f8 09 => 83 f8 0a
+# El azar elige entre los 8 escenarios de la rueda (VS, arcade y el modo de COM contra COM).
+495449 b9 07 00 00 00 => b9 08 00 00 00
+495455 { if (edx == 7) edx = 9; }
+495f55 b9 07 00 00 00 => b9 08 00 00 00
+495f5d { if (edx == 7) edx = 9; }
+495fb5 b9 07 00 00 00 => b9 08 00 00 00
+495fcd { if (edx == 7) edx = 9; }
+# Miniaturas (tex_sys42, ahora 512x1024): la v se divide por 1024 (la constante 1/1024 de 54d6a0) y Random
+# deja de ser un caso aparte (nunca vale 127): usa la franja 8 como los demás. La franja 9 repite la 0 y la 15
+# a Random, para el anterior de la 0 (-1) y el siguiente de Random (9), que se dibujan sin módulo.
+4918dc 83 f8 07 => 83 f8 7f
+491995 83 f9 07 => 83 f9 7f
+491a3e 83 f8 07 => 83 f8 7f
+491af8 83 f8 07 => 83 f8 7f
+491b9e 83 f8 07 => 83 f8 7f
+491932 d8 0d 34 c1 54 00 => d8 0d a0 d6 54 00
+491942 d8 0d 34 c1 54 00 => d8 0d a0 d6 54 00
+4919ee d8 0d 34 c1 54 00 => d8 0d a0 d6 54 00
+4919fe d8 0d 34 c1 54 00 => d8 0d a0 d6 54 00
+491a94 d8 0d 34 c1 54 00 => d8 0d a0 d6 54 00
+491aa4 d8 0d 34 c1 54 00 => d8 0d a0 d6 54 00
+491b4e d8 0d 34 c1 54 00 => d8 0d a0 d6 54 00
+491b5e d8 0d 34 c1 54 00 => d8 0d a0 d6 54 00
+491bf4 d8 0d 34 c1 54 00 => d8 0d a0 d6 54 00
+491c04 d8 0d 34 c1 54 00 => d8 0d a0 d6 54 00
+# Nombres (tex_sys24, ahora 256x512): la fila se divide por 512 (la constante 1/512 de 54c134) y su alto
+# (54db70, que solo usa esta rueda) pasa de 32,5/256 a 32,5/512. Random usa la fila 8; la 15 lo repite para
+# cuando el lugar elegido es -1.
+491c35 83 f8 07 => 83 f8 7f
+491d1e 83 fa 07 => 83 fa 7f
+491ded 83 fa 07 => 83 fa 7f
+491ed8 83 fa 07 => 83 fa 7f
+491fba 83 fa 07 => 83 fa 7f
+491c3c d8 0d dc d6 54 00 => d8 0d 34 c1 54 00
+491d25 d8 0d dc d6 54 00 => d8 0d 34 c1 54 00
+491df4 d8 0d dc d6 54 00 => d8 0d 34 c1 54 00
+491edf d8 0d dc d6 54 00 => d8 0d 34 c1 54 00
+491fc1 d8 0d dc d6 54 00 => d8 0d 34 c1 54 00
+54db70 00 00 02 3e => 00 00 82 3d

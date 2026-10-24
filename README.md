@@ -45,12 +45,36 @@ resto), sin tocar el ejecutable, y también cambia la miniatura de la selección
 
 ![El escenario sin HUD, renderizado por software](docs/img/noche-escenario.jpg)
 
+## Escenario nuevo: Sunlit Shore
+
+![Pelea en Sunlit Shore en el Galaxy A52, a 60 fps](docs/img/playa-pelea.jpg)
+
+Una playa al sol que **se suma** a los siete escenarios de siempre: es el décimo de `field.dat` y el octavo lugar de
+la rueda de selección, antes de Random. Mar turquesa con espuma en la orilla, rompientes y un camino de brillo bajo el
+sol, palmeras que se inclinan sobre el agua, rocas, dos promontorios (uno con faro), un muelle con salvavidas, un bote
+varado, sombrilla con reposeras, un parador de paja entre médanos con pasto, un velero, islas en el horizonte y
+cúmulos con gaviotas. Como Outskirt Hill, todo sale de código (`tools/escenario/playa.mjs`), también el nombre de la
+rueda, que se arma recortando letras de los otros nombres para que tenga la misma tipografía.
+
+![La rueda de escenarios con Sunlit Shore](docs/img/playa-rueda.jpg)
+
+Para tener un escenario más hay que cambiar el juego: la rueda tenía ocho lugares fijos, el 9 era la marca de "al
+azar" y Random elegía entre 7. `analisis/parches.txt` cambia 34 instrucciones y una constante del exe al traducirlo
+(la cantidad de lugares, el mapeo lugar → escenario, el azar entre 8 y las coordenadas de las texturas de la rueda,
+que ahora miden el doble de alto) y agrega cinco fragmentos de C. El resto de la lógica, la IA y el modo arcade no
+cambian.
+
+![Sunlit Shore sin HUD, renderizado por software](docs/img/playa-escenario.jpg)
+
 ```sh
-node tools/escenario/moonlit.mjs        # genera _scratch/hino-android/mods/vsobj2.dat desde tu copia del juego
-node tools/apk.mjs --datos --release    # el APK sale con el escenario nuevo
-node tools/escenario/ver.mjs 3 vista.png  # mirar un escenario sin correr el juego (la imagen de arriba)
-npm test                                # prueba las herramientas de escenarios
+node tools/escenario/playa.mjs          # _scratch/hino-android/mods/vsobj2.dat con Outskirt Hill de noche y Sunlit Shore
+node tools/apk.mjs --datos --release    # el APK sale con los dos escenarios
+node tools/escenario/ver.mjs 9 vista.png  # mirar un escenario sin correr el juego (la imagen de arriba)
+npm test                                # prueba las herramientas de escenarios y los parches
 ```
+
+El código traducido con los parches necesita esos datos: sin ellos la rueda no encuentra la textura ni el escenario
+nuevos.
 
 ## Qué tan fiel es
 
@@ -73,7 +97,9 @@ Galaxy A52 real corrió casi 8 minutos seguidos (27.900 cuadros) sin cortes.
 - **`recomp/`** — traductor en Node con [iced-x86](https://github.com/icedland/iced): descenso recursivo,
   tablas de saltos de VC6, funciones sin retorno, banderas entre funciones (rutinas en ensamblador del CRT), x87
   sobre `double` con la precisión de 24/53 bits que deja Direct3D, código descubierto por punteros en datos.
-  9.306 funciones, 424 mil instrucciones, 0 sin soporte que se ejecuten.
+  9.306 funciones, 424 mil instrucciones, 0 sin soporte que se ejecuten. Antes de traducir aplica
+  `analisis/parches.txt`: bytes del exe que cambian (se verifica el original) y C que se inserta antes de una
+  instrucción.
 - **`runtime/`** — 4 GB de memoria del invitado, hilos con su TEB, despacho indirecto, manejo de fallas. Un
   candado del invitado hace que los hilos del juego no corran a la vez: el juego cuenta con el orden de memoria de
   x86, y en ARM real el hilo de la música leía datos a medio escribir.
@@ -98,6 +124,7 @@ paquete `SDL3-devel-3.4.18-VC.zip` y `sdl3-android/SDL3-3.4.18.aar`).
 ```sh
 npm install
 node recomp/traducir.mjs <ruta>/hinokakera.exe     # genera gen/ (C, imagen.bin) desde tu copia del juego
+node tools/escenario/playa.mjs                     # los escenarios nuevos (los pide el código parcheado)
 node tools/compilar.mjs                            # Windows: build/win/hinokakera.exe
 # glifos para Android: compilar tools/c/gen_glifos.c y correr gen_glifos.exe <hinokakera.exe> gen/glifos.bin
 node tools/icono.mjs                               # ícono del APK, sacado del exe

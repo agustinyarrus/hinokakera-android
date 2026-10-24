@@ -1,5 +1,5 @@
 // Vista de un escenario sin HUD ni personajes: rasterizador por software con los modelos, texturas y banderas
-// de field.dat (Z, escribe Z, mezcla) y la luz de los modelos con normales. Sirve para la miniatura de la
+// de field.dat (Z, escribe Z, mezcla), sin las caras de espaldas y con la luz de los modelos con normales. Sirve para la miniatura de la
 // selección de escenario y para mirar el escenario sin correr el juego.
 //   modelos: [{ nmd, tipo, z, escribeZ, mezcla }] en el orden de field.dat
 //   texturas: (nombre) -> { w, h, rgba } (RGBA8)
@@ -28,13 +28,16 @@ export function vista({ w, h, modelos, texturas, luz, cam }) {
   for (const mod of modelos) {
     const { nmd } = mod, lit = mod.tipo <= 1;
     const vs = nmd.vs.map((v) => {
-      const d = sub(v.p, cam.pos), col = lit ? [0, 1, 2].map((k) => luz.ambiente[k] + luz.difusa[k] * Math.max(0, dot(v.n, L))) : [1, 1, 1];
+      // la luz del shader de los escenarios: max(difusa * (N·L + 1) / 2, ambiente), recortada a 1
+      const d = sub(v.p, cam.pos), col = lit ? [0, 1, 2].map((k) => Math.min(1, Math.max(luz.difusa[k] * (dot(v.n, L) + 1) * 0.5, luz.ambiente[k]))) : [1, 1, 1];
       return { x: dot(d, R), y: dot(d, U), z: dot(d, F), u: v.uv[0], v: v.uv[1], col };
     });
     for (const mat of nmd.mats) {
       const t = mat.tex ? texturas(mat.tex) : null;
       for (let k = mat.ini; k < mat.ini + mat.n; k++) {
         let poli = [0, 1, 2].map((j) => vs[nmd.is[3 * k + j]]);
+        const [a, b, c] = poli, u = [b.x - a.x, b.y - a.y, b.z - a.z], v = [c.x - a.x, c.y - a.y, c.z - a.z];
+        if ((u[1] * v[2] - u[2] * v[1]) * a.x + (u[2] * v[0] - u[0] * v[2]) * a.y + (u[0] * v[1] - u[1] * v[0]) * a.z >= 0) continue; // de espaldas: el juego descarta esas caras (CULL_CCW)
         if (poli.every((q) => q.z < CERCA)) continue;
         if (poli.some((q) => q.z < CERCA)) { // recorte contra el plano cercano
           const out = [];

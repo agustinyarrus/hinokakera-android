@@ -7,6 +7,8 @@ import { leerBmt, escribirBmt } from './bmt.mjs';
 import { leerDat1, escribirDat1 } from '../dat1.mjs';
 import { perlin } from './pintura.mjs';
 import { arcoPuntiagudo } from './moonlit.mjs';
+import { alturaPiso, orilla, NIVEL, MAR } from './playa.mjs';
+import { aplicarParches } from '../../recomp/parches.mjs';
 
 // Triangulación: el área de los triángulos tiene que dar la del polígono (con escalones, puntos repetidos y vanos).
 const areaTris = (p, t) => t.reduce((s, [i, j, k]) => s + ((p[j][0] - p[i][0]) * (p[k][1] - p[i][1]) - (p[j][1] - p[i][1]) * (p[k][0] - p[i][0])) / 2, 0);
@@ -39,4 +41,14 @@ assert.deepEqual(e.map((x) => x.nombre), ['dat/a.dat', 'obj/b.nmd']);
 assert.deepEqual(dat.subarray(e[1].offset, e[1].offset + e[1].tam), nmd);
 const rgba = Buffer.from([255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 0, 255, 255, 255, 255]);
 assert.deepEqual(leerBmt(escribirBmt({ w: 2, h: 2, rgba })).rgba, rgba);
+// Playa: se pelea en plano (los personajes pisan en 0) y del lado del mar el agua llega justo a la orilla.
+for (let th = 0; th < 360; th += 7.5) for (let r = 0; r <= 5.5; r += 0.5) assert.ok(alturaPiso(r, th) === 0, 'zona de pelea plana');
+for (let th = MAR.a0; th <= MAR.a1; th += 5) assert.ok(Math.abs(alturaPiso(orilla(th), th) - NIVEL) < 0.05, 'el agua llega a la orilla');
+
+// Parches del exe: cambian bytes solo si los originales coinciden, y juntan el C a insertar.
+const img = Buffer.from([0x83, 0xf8, 0x07, 0x90]);
+const iny = aplicarParches('# comentario\n1000 83 f8 07 => 83 f8 08\n1003 { eax = 9; }\n', img, 0x1000);
+assert.deepEqual([...img], [0x83, 0xf8, 0x08, 0x90]);
+assert.equal(iny.get(0x1003), '{ eax = 9; }');
+assert.throws(() => aplicarParches('1000 83 f8 07 => 83 f8 09', img, 0x1000), /no coinciden/);
 console.log('escenario: todo bien');

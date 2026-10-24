@@ -106,6 +106,7 @@ export function emitirFuncion(f, ctx) {
     const ins = f.instr.get(va);
     if (etiquetas.has(va)) out.push(`${etiqueta(va)}:;`);
     out.push(`  /* ${va.toString(16)}: ${ins.isInvalid ? '(inválida)' : fmt.format(ins).replaceAll('*/', '* /')} */`);
+    if (ctx.inyecciones?.has(va)) out.push(`  ${ctx.inyecciones.get(va)} /* analisis/parches.txt */`);
     // HINO_TRAZA=4cb3e2,... al traducir: esas funciones informan cada instrucción (depuración).
     if (ctx.trazar?.has(f.entrada)) out.push(`  traza(c, ${hex(va)}, esp, eax, ecx, edx);`);
     let cuerpo;

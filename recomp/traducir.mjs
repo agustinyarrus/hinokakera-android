@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { leerPE } from './pe.mjs';
 import { crearDesensamblador } from './desensamblar.mjs';
 import { emitirFuncion, analizarBanderas, nombreFn } from './emitir.mjs';
+import { aplicarParches } from './parches.mjs';
 import { FlowControl, OpKind, Mnemonic } from 'iced-x86';
 
 const [exe, salida = new URL('../gen', import.meta.url).pathname.replace(/^\/(\w:)/, '$1')] = process.argv.slice(2);
@@ -12,8 +13,13 @@ const POR_ARCHIVO = 250;
 const hex = n => `0x${(n >>> 0).toString(16)}u`;
 
 const pe = leerPE(exe);
-const ds = crearDesensamblador(pe);
 const raiz = new URL('../analisis/', import.meta.url);
+
+// Parches (analisis/parches.txt): bytes del exe que se cambian antes de desensamblar y código C que se
+// inserta antes de una instrucción. La imagen parcheada es también la de imagen.bin.
+const inyecciones = aplicarParches(readFileSync(new URL('parches.txt', raiz), 'utf8'), pe.imagen, pe.base);
+
+const ds = crearDesensamblador(pe);
 const { funciones } = JSON.parse(readFileSync(new URL('ghidra-funciones.json', raiz)));
 const entradas = new Set([pe.entrada, ...funciones.map(([a]) => parseInt(a, 16)).filter(ds.enTexto)]);
 // Entradas que aparecieron en tiempo de ejecución (despachar() las informa).
@@ -101,7 +107,7 @@ for (let vuelta = 1, estable = false; !estable; vuelta++) {
 }
 
 const ctx = {
-  noSoportadas: [], analisis, entra, devuelve,
+  noSoportadas: [], analisis, entra, devuelve, inyecciones,
   trazar: new Set((process.env.HINO_TRAZA ?? '').split(',').filter(Boolean).map(x => parseInt(x, 16))),
   llamarDirecto: d => res.has(d) ? `${nombreFn(d)}(c);` : `despachar(c, ${hex(d)});`,
 };

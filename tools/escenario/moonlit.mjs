@@ -24,7 +24,7 @@ export const CASTILLO = { ang: 64, dist: 23.5 };
 export const MONOLITO = { ang: 82, dist: 15.5 };
 export const ARBOL = { ang: 117, dist: 14.8 };
 
-function sacar(nombre) {
+export function sacar(nombre) {
   for (const a of ARCHIVOS) {
     const fd = openSync(join(JUEGO, a), 'r');
     try {
@@ -57,7 +57,7 @@ function textura(nombre, L) {
 // ---------- cielo: panorama de 4096x1024 (x = ángulo, y = elevación) en dos mitades de 2048 ----------
 // La elevación no es lineal: de -10° a 30° ocupa 3/4 de la textura, que es lo que ve la cámara.
 export const elevAV = (e) => (e <= 30 ? 1 - ((e + 10) / 40) * 0.75 : 0.25 - ((e - 30) / 60) * 0.25);
-const vAElev = (v) => (v >= 0.25 ? -10 + ((1 - v) / 0.75) * 40 : 30 + ((0.25 - v) / 0.25) * 60);
+export const vAElev = (v) => (v >= 0.25 ? -10 + ((1 - v) / 0.75) * 40 : 30 + ((0.25 - v) / 0.25) * 60);
 
 function cielo() {
   const W = 4096, H = 1024, L = new Lienzo(W, H), rnd = azar(7);
@@ -103,9 +103,9 @@ function cielo() {
 }
 
 // Domo de radio 40: 64 lados, la mitad de 0° a 180° con tex_f090 y la otra con tex_f091.
-function domo() {
+export function domo(texA = 'tex_f090.bmt', texB = 'tex_f091.bmt') {
   const M = new Malla(), elev = [-10, -4, 0, 2, 4, 6, 8, 10, 13, 16, 20, 25, 30, 40, 52, 66, 80, 90], R = 40;
-  for (const [tex, a0] of [['tex_f090.bmt', 0], ['tex_f091.bmt', 180]]) {
+  for (const [tex, a0] of [[texA, 0], [texB, 180]]) {
     const g = M.material(tex), lados = 32, ids = [];
     for (const e of elev) {
       ids.push(Array.from({ length: lados + 1 }, (_, k) => {
