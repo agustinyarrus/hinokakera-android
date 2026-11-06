@@ -312,3 +312,153 @@ con signo (`pasaron`).
 
 **Probado**: dos copias a la vista contra el servidor local (`_scratch/hino/red/salas-demo.sh`): sala con clave, clave
 mal, entrar, echar, volver a entrar, empezar y pelear. El celu con la versión nueva quedó instalado.
+
+## 2026-11-05 — Lost Grave -Undead-: escenario nuevo con zombis
+
+**Hecho**
+- **Escenario 10, novena opción de la rueda de VS** (queda después de ( Random ), justo antes de Lost Grave -Blue-):
+  Lost Grave de noche con luna roja, humo y fuegos en el horizonte, una ronda de barricadas (barreras de hormigón
+  con franjas, bolsas de arena, tachos y autos quemados) y 46 zombis que se mueven: los que empujan contra las
+  barricadas estiran los brazos y cabecean, y 20 dan vueltas en dos carriles, cada carril para su lado y a velocidad
+  pareja (no se atraviesan). Arden 5 tachos y un auto, con llamas que titilan y resplandor en el piso. Random sigue
+  sorteando entre los 7 originales. `node tools/escenario/mods.mjs` arma los dos escenarios nuevos (el de noche y
+  este) en `mods/vsobj2.dat`; lo común quedó en `tools/escenario/comun.mjs`.
+- **Parches al exe** (`analisis/parches.txt`; `recomp/traducir.mjs` los aplica antes de traducir y corta si los
+  bytes originales no coinciden): la rueda pasa de 8 a 9 opciones; al confirmar, la opción 7 (Random) da 9 y la 8
+  da 10; el armado de la pelea VS toma "x == 9" como azar (antes "x >= 9"); al volver a la rueda el tope pasa de 7 a
+  8. El escenario 9 de field.dat queda como copia del 0, porque 9 es la marca de "al azar". El número de escenario
+  solo se usa para cargar field.dat (cargador en 0x4984b0, que ya es por datos), la nieve de Lost Grave -white- y
+  el cursor de la rueda: no hay tablas de 9 que se pasen.
+- **Una fila más sin tocar el código que dibuja la rueda** (0x490af0): nombres (`tex_sys24`, 8 filas de 32) y
+  miniaturas (`tex_sys42`, franjas de 64) se recortan con fracciones fijas y el 7 es Random a mano; la fila 8 pide
+  v de 1 a 2. Las dos texturas van al doble de alto con dos píxeles transparentes de marca al final (CCFFEE y
+  BBDD55, se mira la cifra alta para sobrevivir a los formatos de 16 bits); `textura_subir` las reconoce y el
+  fragment shader multiplica v por `u_esc` (1 en todas las demás: por 1.0 no cambia ningún bit). El nombre sale de
+  `tools/escenario/texto.ps1` (GDI+, Times New Roman negrita itálica ensanchada, como los originales).
+- **Modelos animados** (`d3d/animado.c`): si los primeros vértices de un VB traen la firma 7777 -3131 2468, son
+  datos que ningún triángulo usa (huesos con su pivote, figuras, hueso de cada vértice, en posición y uv) y el resto
+  son las figuras en pose de descanso, cada una en su espacio local y con la misma malla. En cada cuadro se suben
+  colocadas y animadas desde una copia; el VB del juego no se toca y el tiempo sale del número de cuadro (las
+  capturas se repiten). Zombis de 7 huesos (encorvados, cabeza caída, brazos estirados, colgando o uno arrancado,
+  cojera), sombras de 1 hueso que siguen a su zombi y fuegos de 2 (resplandor quieto, llama que titila alrededor de
+  su base). `npm test` prueba el formato de los datos y la marca.
+
+**Medidas que mandan** (registradas en una pelea): la cámara anda a 1,6–8,2 del centro del escenario (4 en promedio,
+a ~0,8 de alto) y los luchadores miden ~1; el piso de Lost Grave es plano hasta ~11,6. Por eso las barricadas van a
+9,4, los zombis a 10 y los carriles a 10,7 y 11,3.
+
+**Trampas**
+- Las texturas de los BMT no pasan por `D3DXCreateTextureFromFileInMemoryEx`: el juego las decodifica y las llena con
+  `CreateTexture` + `LockRect`. Lo que haya que mirar de una textura va en `textura_subir`.
+- El escenario se dibuja con vertex shaders (vs 2 los modelos iluminados, vs 4 los otros): el gancho toma posición,
+  normal y uv de los atributos que arma `dibujar()`, no del FVF.
+- Una macro con `p++` de argumento lo evaluaba tres veces: las figuras salían corridas y aparecían zombis gigantes
+  al lado de la cámara.
+- Pasar el auto con (x, y, z) -> (z, y, x) es un espejo y da vuelta las caras: solo rotaciones.
+- Partículas de field.dat: 1 y 2 son bandas de polvo (tapan a los zombis), 3 nieve, 4 un resplandor de atardecer,
+  5 las rocas que flotan en el escenario final. Undead va sin.
+
+**Probado**: en la PC (60 fps) y en el emulador con el APK release (x86_64, 59,6–59,9 fps en la pelea): rueda,
+miniatura, nombre, pelea con los 46 zombis, sombras y fuegos; ( Random ) sigue sorteando los 7 originales. En el
+emulador, borrar antes la carpeta `escritura` de prueba: guarda el último escenario y la rueda arranca en otra
+opción, y el guion de teclas cae en otro lado.
+
+**Sin probar**: el celu (arm64; el A52 no estaba emparejado), volver a la rueda después de una pelea en Undead (el
+tope de 7 a 8), el juego en red con el escenario 10 (los dos lados necesitan esta versión) y el modo historia (no
+usa la rueda).
+
+## 2026-11-06 — Eclipse Caldera: escenario con columnas para saltar
+
+**Hecho**
+- **Escenario 11, décima opción de la rueda** (después de Undead): una isla de basalto en un lago de lava dentro de una
+  caldera, bajo un eclipse total (el anillo de atardecer en todo el horizonte y un volcán lejano en la brecha de la
+  caldera, debajo del eclipse). Tiene un cristal de fuego que gira y flota sobre la lava, cascadas y lago de lava que
+  corren, braseros, obeliscos, brasas que suben y el sello del eclipse en el piso. Todo está en
+  `tools/escenario/caldera.mjs`, y `mods.mjs` arma los tres escenarios.
+- **Desniveles**: 17 columnas de basalto (`dat/suelo.dat`, adentro de `vsobj2.dat`). Hay una escalera de tres a cada lado
+  sobre el eje x (6, 11, 16), otra al norte hasta la cumbre (20; solo se llega desde la de 10), un estrado de 3,5 que
+  se sube caminando y pilares sueltos. La arena tiene radio 150.
+- **Ganchos en el traductor** (`analisis/ganchos.txt`, `recomp/emitir.mjs`): antes de la instrucción indicada se vuelcan
+  los registros al contexto, se llama a la función del runtime y se recargan. Las banderas quedan como estaban y la
+  pila x87 ya vive en el contexto. `traducir.mjs` corta si un gancho no cae en una instrucción traducida.
+  Son 53, todos de `runtime/escenarios.c`:
+  - las 41 comparaciones de la altura con 0 (o con 8) restan de ST0 la tapa que hay debajo;
+  - la caída de la física se apoya en la tapa que estaba debajo al empezar el cuadro (así no se atraviesa cayendo
+    rápido) y los "altura = 0" la dejan en esa tapa;
+  - una columna más alta que los pies + 4 es pared: saca al luchador por el radio + 3. Esto pasa después de la física
+    y de SetPosition (el empuje entre luchadores), y ahí también se frena en el borde de la arena;
+  - la sombra (`D3DXMatrixShadow` sobre y = 0) se proyecta sobre la tapa;
+  - los modelos `mod_w*` reciben el centro (0, -0.5, 0) y quedan fijos en el mundo;
+  - el cursor de la rueda al volver: el tope vuelve a ser el original (7) y el gancho lleva 10 y 11 a sus opciones.
+- La rueda pasa a 10 opciones (cambia un byte en `parches.txt`; el parche del tope se fue).
+- `d3d/animado.c`: tipos de figura 3 (corriente: la uv corre), 4 (gira y flota) y 5 (brasa que sube, se mece y se
+  apaga).
+- `npm test`: el formato de `dat/suelo.dat` y la distribución de las columnas. Todas adentro de la arena y sin pisarse,
+  el arranque libre, cada escalera de un salto y las del eje x cruzándolo.
+
+**Cómo se encontró la física** (volcados de memoria por cuadro y un vigilante de escrituras con páginas de solo lectura,
+los dos temporales y ya sacados):
+- **El luchador**: posición en +A4 (x, y, z), velocidad en +B0, aceleración en +C8 (la gravedad sale de +9C),
+  dt 1/60 (0x54D8C0) y techo 250. `f_0046b600` es la física: integra, hace "y <= 0 → y = 0, vy = 0" en 0x46bafa, pasa
+  la posición al modelo (0x4059C0) y marca "en el aire" (4C8 |= 4).
+- **Las comparaciones con 0.0** (0x54AAC4) están en `f_0046c170` (estados), `f_00465e10`, `f_00465730` (qué movimientos
+  se permiten en el piso o en el aire, más "altura < 8") y `f_00461690` (polvo al correr).
+- **El centro del escenario**: `f_00480520` calcula el punto medio de los luchadores con y = 0 y `f_00498b60` se lo da a
+  todos los modelos del escenario (con y - 0.5); además corre la textura del piso según la escala de field.dat. Los
+  modelos del escenario van a escala 20 (0x4988b9).
+- No hay doble salto: el salto llega a 16,5 y avanza ~14.
+
+**Trampas**
+- La pelea arranca sobre el eje x y al principio se mueve por esa línea (abajo agacha, no corre de costado). Después
+  la línea gira y en una pelea larga recorre toda la arena. Por eso las escaleras del arranque tienen que cruzar el
+  eje: si no, saltando para atrás no se llega.
+- El juego copia la posición en varios objetos (el modelo y otros): el que manda es el de +A4.
+- El HUD tapa lo que queda más de ~8° arriba del horizonte al empezar la ronda: el eclipse y el cristal van bajos.
+- Los períodos del ruido de las texturas que se repiten tienen que ser enteros (otra vez): con 1/9 o 1/30 de 512 quedaban
+  costuras.
+
+**Probado**
+- **En la PC**:
+  - subir la escalera del oeste: frena en la pared en x = -42 y aterriza en la de 6 y en la de 11;
+  - bajar caminando por el borde, y la sombra sobre la tapa;
+  - una pelea larga con teclas al azar: 60 fps y llega al borde de la arena en r = 150;
+  - Undead y un escenario original siguen como estaban;
+  - volver a la rueda después de una pelea (pausa → Exit) en Eclipse Caldera y en Undead: el cursor cae en su opción
+    (lo que había quedado sin probar en la entrada anterior).
+- **En el emulador**, con el APK release (x86_64): la rueda, la pelea a 59–60 fps y la misma subida.
+
+**Sin probar**: el celu (el A52 no aparece por depuración inalámbrica), el juego en red en el escenario 11 (los dos
+lados necesitan esta versión), llegar a la cumbre en una pelea (la línea tiene que apuntar al norte) y que la IA use
+las columnas (salta, pero no las busca).
+
+## 2026-11-06 (2) — Los tres escenarios nuevos juntos: la rueda de 11 lugares
+
+**Qué pasó**: Sunlit Shore y las salas (entradas 6 a 8) se hicieron en otra copia del repo y llegaron a GitHub;
+Undead y Eclipse Caldera, en esta, sin esos commits. Las dos ramas agregaban escenarios a la rueda de maneras
+distintas y usaban los mismos nombres de modelos y texturas (`mod_f100`…, `tex_f100`…).
+
+**Hecho**
+- **Rueda de 11 lugares** (`analisis/parches.txt`): queda la forma de Sunlit Shore (Random al final, la marca de "al
+  azar" fuera del rango de escenarios y las texturas de la rueda con la v dividida por 1024 y 512), extendida:
+  lugares 0-6 = escenarios 0-6, 7-9 = escenarios 9-11 (playa, Undead, Caldera) y 10 = Random. El Random elegido es
+  -1, la marca guardada en la partida pasa a 12 y el azar elige entre los 10 escenarios (VS, arcade y COM contra
+  COM). Al volver a la rueda, los escenarios 9-11 llevan a su lugar; 7, 8 y la marca, a Random.
+- Se van las texturas de doble alto con marca (`textura_subir` y `u_esc` en el fragment shader) y el gancho
+  `g_rueda_cursor`: los cubre el parche.
+- `tools/escenario/mods.mjs` arma todo: noche, playa, Undead, Caldera y la letra del lobby (`tools/sala/letras.mjs`).
+  `rueda()` (`comun.mjs`) arma las 16 filas de miniaturas y nombres y cada escenario pinta la suya. Las miniaturas
+  nuevas llevan el alfa de las del juego (bordes redondeados; antes las de Undead y Caldera eran opacas).
+- Undead pasa a `mod_f140`-`mod_f149` y `tex_f140`-`tex_f155` (chocaban con la playa); `escribirMods` corta si hay
+  nombres repetidos.
+- El traductor corta si un fragmento de C de `parches.txt` o un gancho no cae en una instrucción traducida.
+
+**Probado en la PC**: la rueda entera (la playa, Undead, Caldera y Random en orden, con sus nombres y miniaturas);
+pelear en los tres; Random (eligió Caldera, con sus columnas); Outskirt Hill de noche; volver a la rueda desde cada
+uno (pausa → Exit → selección de personaje → rueda: el cursor queda en el escenario jugado); el lobby de salas.
+`npm test` (escenarios, parches y servidor de salas).
+
+**Probado en el emulador**, con el APK release (x86_64): la rueda y pelear en los tres; Undead y Caldera a 60 fps, la
+playa a 51–53 (en el A52 iba a 60).
+
+**Sin probar**: el celu (el A52 no estaba conectado) y el juego en red en los escenarios 9-11 (los dos lados necesitan
+esta versión).

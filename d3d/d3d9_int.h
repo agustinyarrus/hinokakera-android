@@ -40,10 +40,13 @@ struct Superficie {
   uint32_t lock_va;
 };
 
+typedef struct Animado Animado;
 typedef struct {
   Recurso r;
   uint32_t tam, uso, formato, pool; // formato: FVF del VB o D3DFMT_INDEX16/32 del IB
   uint32_t va;                      // datos en memoria del invitado
+  int anim_estado;                  // modelo animado de un mod (animado.c): 0 sin mirar, 1 no, 2 sí
+  Animado *anim;
 } Buffer;
 
 typedef struct { uint16_t stream, offset; uint8_t tipo, metodo, uso, indice; } Elemento;
@@ -156,6 +159,10 @@ void sala_dibujar(GLuint fbo, int bw, int bh, int corrimiento);
 
 // vs.c
 ShaderV *vs_traducir(const char *fuente);
+
+// animado.c
+const uint8_t *animado_vertices(Buffer *b, uint32_t stride, uint32_t off_pos, int off_nor, uint32_t off_tex, uint32_t desde);
+void animado_soltar(Buffer *b);
 
 static inline float bits_f(uint32_t b) { float f; memcpy(&f, &b, 4); return f; }
 static inline uint32_t f_bits(float f) { uint32_t b; memcpy(&b, &f, 4); return b; }

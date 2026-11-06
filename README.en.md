@@ -53,30 +53,66 @@ rest), without touching the executable, and the stage select thumbnail changes t
 ![A fight on Sunlit Shore on the Galaxy A52, at 60 fps](docs/img/playa-pelea.jpg)
 
 A sunny beach that **joins** the usual seven stages: it's the tenth in `field.dat` and the eighth slot of the select
-wheel, before Random. A turquoise sea with foam on the shore, breaking waves and a path of glitter under the sun, palm
-trees leaning over the water, rocks, two headlands (one with a lighthouse), a pier with life rings, a beached boat, a
-beach umbrella with deck chairs, a thatched beach bar among grassy dunes, a sailboat, islands on the horizon and
-cumulus clouds with seagulls. Like Outskirt Hill, everything comes from code (`tools/escenario/playa.mjs`), the name
-on the wheel too, which is put together from letters cut out of the other names so it has the same typeface.
-
-![The stage wheel with Sunlit Shore](docs/img/playa-rueda.jpg)
-
-One more stage means changing the game: the wheel had eight fixed slots, 9 was the "random" marker and Random picked
-among 7. `analisis/parches.txt` changes 34 instructions and one constant of the exe while translating it (the number
-of slots, the slot → stage mapping, random among 8 and the texture coordinates of the wheel, which are now twice as
-tall) and adds five C fragments. The rest of the logic, the AI and arcade mode don't change.
+wheel. A turquoise sea with foam on the shore, breaking waves and a path of glitter under the sun, palm trees leaning
+over the water, rocks, two headlands (one with a lighthouse), a pier with life rings, a beached boat, a beach umbrella
+with deck chairs, a thatched beach bar among grassy dunes, a sailboat, islands on the horizon and cumulus clouds with
+seagulls. Like Outskirt Hill, everything comes from code (`tools/escenario/playa.mjs`), the name on the wheel too,
+which is put together from letters cut out of the other names so it has the same typeface.
 
 ![Sunlit Shore without the HUD, software-rendered](docs/img/playa-escenario.jpg)
 
+## New stage: Lost Grave -Undead-
+
+![A fight on Lost Grave -Undead-](docs/img/undead-pelea.jpg)
+
+The ninth slot of the wheel: Lost Grave at night with a red moon, barricades, burning barrels and a car on fire, and a
+horde of zombies that moves. Some push against the barricades reaching out with their arms and others circle around
+the fight. The zombies, their shadows and the flames are stage models that carry their bones in data vertices; the
+port animates them every frame (`d3d/animado.c`). It comes from `tools/escenario/zombis.mjs`.
+
+## New stage: Eclipse Caldera, with columns to jump on
+
+![Camille on top of a basalt column in Eclipse Caldera](docs/img/caldera-pelea.jpg)
+
+The tenth slot of the wheel: a basalt island in a lava lake, inside a volcano's caldera, under a total eclipse. A
+giant fire crystal spins and floats over the lava, lava falls pour down the caldera, braziers burn on the shore and
+embers rise. And it has **real height differences**: 17 basalt columns from 3.5 to 20 high (the fighters are ~20 tall
+and jump ~16.5). Behind each fighter there's a staircase of three columns, and to the north another one leads to a
+summit you can only reach from another column. The columns are floor for whoever lands on top and a wall for whoever
+is lower (you have to jump them), you walk off the edge to come down and the shadow falls on the top. The arena has an
+edge: you can't walk out into the lake.
+
+![The start of the round: the crystal, the eclipse over the volcano and the steps on both sides](docs/img/caldera-arranque.jpg)
+
+The original game has the floor at y = 0 everywhere: it compares the height with 0 to know whether someone is standing
+and sets it to 0 on landing. To have height differences, the translator takes **hooks** (`analisis/ganchos.txt`): C
+functions (`runtime/escenarios.c`) that run right before an instruction of the exe, with the registers at hand. With
+52 hooks, the 41 height comparisons measure against the top underneath, landing rests on it, columns taller than the
+fighter push them out and shadows are cast on the top. Also, the `mod_w*` models stay fixed in the world, while the
+rest of the stage, as in the original, follows the center of the fight. The columns are read from `dat/suelo.dat`,
+which goes inside `vsobj2.dat` with the rest of the stage (`tools/escenario/caldera.mjs`).
+
+## The wheel with the new stages
+
+| | | |
+|---|---|---|
+| ![The wheel on Sunlit Shore](docs/img/playa-rueda.jpg) | ![The wheel on Lost Grave -Undead-](docs/img/undead-rueda.jpg) | ![The wheel on Eclipse Caldera](docs/img/caldera-rueda.jpg) |
+
+New stages mean changing the game: the wheel had eight fixed slots, 9 was the "random" marker and Random picked among
+7. `analisis/parches.txt` changes 34 instructions and one constant of the exe while translating it (the number of
+slots, which becomes 11, the slot → stage mapping, random among the 10 stages and the texture coordinates of the
+wheel, which are now twice as tall) and adds five C fragments. Random goes last, and coming back from a fight the
+wheel starts on the stage you played. The rest of the logic, the AI and arcade mode don't change.
+
 ```sh
-node tools/escenario/playa.mjs          # _scratch/hino-android/mods/vsobj2.dat with Outskirt Hill at night and Sunlit Shore
-node tools/apk.mjs --datos --release    # the APK comes out with both stages
-node tools/escenario/ver.mjs 9 vista.png  # look at a stage without running the game (the image above)
-npm test                                # tests the stage tools and the patches
+node tools/escenario/mods.mjs           # _scratch/hino-android/mods/vsobj2.dat: Outskirt Hill at night, the three new ones and the lobby's letters
+node tools/apk.mjs --datos --release    # the APK comes out with the new stages
+node tools/escenario/ver.mjs 9 vista.png  # look at a stage without running the game (the beach, above)
+npm test                                # tests the stage tools, the patches and the rooms server
 ```
 
-The translated code with the patches needs that data: without it, the wheel finds neither the new texture nor the new
-stage.
+The translated code with the patches needs that data: without it, the wheel finds neither the new textures nor the
+new stages.
 
 ## Online play with rooms
 
@@ -153,7 +189,8 @@ real Galaxy A52 it ran almost 8 minutes straight (27,900 frames) without a hitch
   jump tables, functions that never return, flags across functions (the CRT's assembly routines), x87 on `double`
   with the 24/53-bit precision Direct3D leaves set, code discovered through pointers in data. 9,306 functions, 424
   thousand instructions, 0 unsupported ones executed. Before translating, it applies `analisis/parches.txt`: bytes of
-  the exe that change (the original is checked first) and C inserted before an instruction.
+  the exe that change (the original is checked first) and C inserted before an instruction; `analisis/ganchos.txt`
+  adds runtime functions that run before an instruction.
 - **`runtime/`** — 4 GB of guest memory, threads with their TEB, indirect dispatch, fault handling. A guest lock keeps
   the game's threads from running at the same time: the game counts on x86 memory ordering, and on real ARM the music
   thread was reading half-written data.
@@ -177,8 +214,8 @@ JDK 21 and Gradle 8.11 (see `tools/apk.mjs`). SDL3 3.4.18 goes in `terceros/` (`
 
 ```sh
 npm install
-node recomp/traducir.mjs <path>/hinokakera.exe     # generates gen/ (C, imagen.bin) from your copy of the game
-node tools/escenario/playa.mjs                     # the new stages and the lobby's letters (the patched code needs them)
+node recomp/traducir.mjs <path>/hinokakera.exe     # generates gen/ (C, imagen.bin) from your copy of the game, with patches and hooks
+node tools/escenario/mods.mjs                      # the new stages and the lobby's letters (the patched code needs them)
 node tools/compilar.mjs                            # Windows: build/win/hinokakera.exe
 # glyphs for Android: build tools/c/gen_glifos.c and run gen_glifos.exe <hinokakera.exe> gen/glifos.bin
 node tools/icono.mjs                               # the APK icon, taken from the exe
@@ -203,4 +240,4 @@ online game.
 The code in this repo is MIT. Hinokakera Chaotic Eclipse belongs to Reddish Region; the screenshots in `docs/img/` are
 from the game and are only there to show the port.
 
-<!-- i18n source=README.md sha256=59023759e666 -->
+<!-- i18n source=README.md sha256=b5b2315c7d86 -->

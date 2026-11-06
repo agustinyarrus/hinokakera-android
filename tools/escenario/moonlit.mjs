@@ -1,20 +1,11 @@
 // Outskirt Hill de noche, al estilo de Moonlit Wilderness (Tekken 7): luna llena, ruinas góticas en una loma,
-// árbol seco, monolito caído y campo de cortaderas. Lee los originales de tu copia del juego y deja
-// <scratch>/mods/vsobj2.dat: el parche del juego más lo nuevo (el juego busca primero en vsobj2.dat).
-// Uso: node tools/escenario/moonlit.mjs [--png carpeta]   (--png guarda las texturas para mirarlas)
-import { openSync, readSync, closeSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { JUEGO, SCRATCH } from '../datos.mjs';
-import { escribirDat1 } from '../dat1.mjs';
-import { leerNmd, escribirNmd } from './nmd.mjs';
+// árbol seco, monolito caído y campo de cortaderas. Lo arma tools/escenario/mods.mjs junto con los demás.
+import { leerNmd } from './nmd.mjs';
 import { leerBmt } from './bmt.mjs';
-import { leerCampo, escribirCampo } from './campo.mjs';
-import { Lienzo, azar, fbm, perlin, sat, suave, mezclar, hex, trazo, poligono, desenfocar } from './pintura.mjs';
+import { Lienzo, azar, fbm, perlin, sat, suave, mezclar, hex, trazo, poligono } from './pintura.mjs';
 import { Malla, rotY, rotZ, rotX, unit, cruz, resta, suma, escalar } from './geometria.mjs';
-import { vista } from './vista.mjs';
+import { sacar, textura, modelo, miniatura } from './comun.mjs';
 
-const ARCHIVOS = ['vsobj2.dat', 'vsobj.dat', 'vsdat.dat']; // orden en que el juego los busca
-const PNG = process.argv.includes('--png') ? process.argv[process.argv.indexOf('--png') + 1] : null;
 const ESCENARIO = 3; // Outskirt Hill
 const RAD = Math.PI / 180;
 
@@ -23,36 +14,6 @@ export const LUNA = { ang: 100, elev: 8.5, dist: 38, radio: 4.3 };
 export const CASTILLO = { ang: 64, dist: 23.5 };
 export const MONOLITO = { ang: 82, dist: 15.5 };
 export const ARBOL = { ang: 117, dist: 14.8 };
-
-export function sacar(nombre) {
-  for (const a of ARCHIVOS) {
-    const fd = openSync(join(JUEGO, a), 'r');
-    try {
-      const cab = Buffer.alloc(8); readSync(fd, cab, 0, 8, 0);
-      const tabla = Buffer.alloc(Math.min(cab.readUInt32LE(4) * 300 + 8, 8 << 20)); readSync(fd, tabla, 0, tabla.length, 0);
-      const e = leerDat1Tabla(tabla).find((x) => x.nombre === nombre);
-      if (e) { const b = Buffer.alloc(e.tam); readSync(fd, b, 0, e.tam, e.offset); return b; }
-    } finally { closeSync(fd); }
-  }
-  throw new Error(`no está en el juego: ${nombre}`);
-}
-// Como leerDat1 pero solo con la tabla (los dat grandes no se leen enteros).
-function leerDat1Tabla(t) {
-  const n = t.readUInt32LE(4), r = [];
-  for (let i = 0, p = 8; i < n && p + 4 <= t.length; i++) {
-    const l = t.readUInt32LE(p); r.push({ nombre: t.toString('latin1', p + 4, p + 4 + l).replace(/\0.*$/s, ''), offset: t.readUInt32LE(p + 4 + l), tam: t.readUInt32LE(p + 8 + l) });
-    p += 12 + l;
-  }
-  return r;
-}
-
-const salidas = []; // [{nombre, datos}]
-const generadas = new Map(); // textura -> RGBA8, para la vista
-function textura(nombre, L) {
-  generadas.set(`${nombre}.bmt`, { w: L.w, h: L.h, rgba: L.rgba8() });
-  salidas.push({ nombre: `obj/${nombre}.bmt`, datos: L.bmt() });
-  if (PNG) writeFileSync(join(PNG, `${nombre}.png`), L.png());
-}
 
 // ---------- cielo: panorama de 4096x1024 (x = ángulo, y = elevación) en dos mitades de 2048 ----------
 // La elevación no es lineal: de -10° a 30° ocupa 3/4 de la textura, que es lo que ve la cámara.
@@ -122,30 +83,30 @@ export function domo(texA = 'tex_f090.bmt', texB = 'tex_f091.bmt') {
 }
 
 // ---------- luna: disco opaco con mares y halo semitransparente (mezcla alfa) ----------
-function luna() {
+export function luna(nombre = 'tex_f092', claro = [0.97, 0.98, 1], mar = [0.56, 0.59, 0.66], tinte = [0.78, 0.86, 1]) {
   const N = 512, L = new Lienzo(N, N), rd = N * 0.2, c0 = N / 2;
   L.cada((x, y) => {
     const dx = (x + 0.5 - c0) / rd, dy = (y + 0.5 - c0) / rd, r = Math.hypot(dx, dy);
     const fuera = Math.max(0, r - 1), halo = r > 1 ? 0.32 * Math.exp(-fuera / 0.16) + 0.22 * Math.exp(-fuera / 0.85) : 0;
     const borde = sat(Math.min(c0 - Math.abs(x + 0.5 - c0), c0 - Math.abs(y + 0.5 - c0)) / (N * 0.06)); // a negro antes del borde del quad
-    let col = [0.78, 0.86, 1], alfa = sat(halo * 1.6) * borde;
+    let col = tinte, alfa = sat(halo * 1.6) * borde;
     const cob = sat((1 - r) * rd + 0.5);
     if (cob > 0) {
-      const z = Math.sqrt(Math.max(0, 1 - r * r)), mar = suave(0.02, 0.3, fbm(dx * 1.4 + 3, dy * 1.4 + 7, 5, 21)) * 0.42;
+      const z = Math.sqrt(Math.max(0, 1 - r * r)), mares = suave(0.02, 0.3, fbm(dx * 1.4 + 3, dy * 1.4 + 7, 5, 21)) * 0.42;
       const crater = 0.1 * fbm(dx * 11, dy * 11, 3, 33), luz = 0.78 + 0.22 * z;
-      const disco = mezclar([0.97, 0.98, 1], [0.56, 0.59, 0.66], sat(mar + crater)).map((v) => v * luz);
+      const disco = mezclar(claro, mar, sat(mares + crater)).map((v) => v * luz);
       col = mezclar(col, disco, cob); alfa = alfa + (1 - alfa) * cob;
     }
     return [...col, alfa];
   });
-  textura('tex_f092', L);
+  textura(nombre, L);
 }
 
-function lunaQuad() {
-  const M = new Malla(), g = M.material('tex_f092.bmt');
-  const d = [Math.cos(LUNA.elev * RAD) * Math.cos(LUNA.ang * RAD), Math.sin(LUNA.elev * RAD), Math.cos(LUNA.elev * RAD) * Math.sin(LUNA.ang * RAD)];
-  const c = escalar(d, LUNA.dist), der = unit(cruz([0, 1, 0], d)), arr = cruz(d, der);
-  const s = (LUNA.dist * Math.tan(LUNA.radio * RAD)) / 0.4; // el disco ocupa 0.4 del ancho de la textura
+export function lunaQuad(l = LUNA, tex = 'tex_f092.bmt') {
+  const M = new Malla(), g = M.material(tex);
+  const d = [Math.cos(l.elev * RAD) * Math.cos(l.ang * RAD), Math.sin(l.elev * RAD), Math.cos(l.elev * RAD) * Math.sin(l.ang * RAD)];
+  const c = escalar(d, l.dist), der = unit(cruz([0, 1, 0], d)), arr = cruz(d, der);
+  const s = (l.dist * Math.tan(l.radio * RAD)) / 0.4; // el disco ocupa 0.4 del ancho de la textura
   const P = (u, v) => suma(c, suma(escalar(der, (u - 0.5) * 2 * s), escalar(arr, (0.5 - v) * 2 * s)));
   M.cara(g, [P(0, 0), P(1, 0), P(1, 1), P(0, 1)], [[0, 0], [1, 0], [1, 1], [0, 1]]); // normal hacia el centro
   return M;
@@ -429,30 +390,8 @@ function arboles3d() {
   return M;
 }
 
-// Miniatura de la selección de escenario (cuarta franja de 256x64 de tex_sys42, con su alfa) renderizada sin
-// HUD ni personajes. Con --png deja además una vista grande con la cámara del juego.
-function miniatura(e) {
-  const tex = (n) => generadas.get(n) || (() => { const b = sacar(`obj/${n}`); return b.toString('latin1', 0, 4) === 'BMT_' ? leerBmt(b) : null; })();
-  const mods = e.modelos.map((m) => ({ ...m, nmd: modelos.get(m.nombre.replace('.nmd', '')) }));
-  const luz = { difusa: e.difusa, ambiente: e.ambiente, dir: e.dir }, cache = new Map(), texturas = (n) => (cache.has(n) ? cache.get(n) : cache.set(n, tex(n)).get(n));
-  const W = 1024, H = 256, img = vista({ w: W, h: H, modelos: mods, texturas, luz, cam: { pos: [0, 0.55, -5.7], rumbo: 86, cabeceo: 3, fovV: 17 } });
-  const sys = leerBmt(sacar('obj/tex_sys42.bmt')), L = new Lienzo(sys.w, sys.h);
-  for (let i = 0; i < sys.w * sys.h; i++) L.d.set([0, 1, 2, 3].map((k) => sys.rgba[4 * i + k] / 255), 4 * i);
-  for (let y = 0; y < 64; y++) for (let x = 0; x < 256; x++) { // promedio de 4x4
-    const c = [0, 0, 0];
-    for (let dy = 0; dy < 4; dy++) for (let dx = 0; dx < 4; dx++) for (let k = 0; k < 3; k++) c[k] += Math.min(1, img[3 * ((4 * y + dy) * W + 4 * x + dx) + k]) / 16;
-    L.d.set(c, 4 * ((192 + y) * sys.w + x));
-  }
-  textura('tex_sys42', L);
-  if (PNG) {
-    const G = vista({ w: 1332, h: 600, modelos: mods, texturas, luz, cam: { pos: [0, 0.5, -5.7], rumbo: 90, cabeceo: 0, fovV: 30.6 } }), V = new Lienzo(1332, 600);
-    for (let i = 0; i < 1332 * 600; i++) V.d.set([Math.min(1, G[3 * i]), Math.min(1, G[3 * i + 1]), Math.min(1, G[3 * i + 2]), 1], 4 * i);
-    writeFileSync(join(PNG, 'vista.png'), V.png());
-  }
-}
-
 // Copia de un modelo del juego con otro nombre (y lo que haga falta cambiarle).
-function copia(original, nombre, cambio) {
+export function copia(original, nombre, cambio) {
   const m = leerNmd(sacar(`obj/${original}.nmd`)); m.nombre = nombre; cambio(m); return m;
 }
 
@@ -488,11 +427,8 @@ function anexar(m, M) {
   m.is.push(...n.is.map((i) => i + base));
 }
 
-const modelos = new Map();
-const modelo = (m) => { modelos.set(m.nombre, m); salidas.push({ nombre: `obj/${m.nombre}.nmd`, datos: escribirNmd(m) }); };
-
-export function principal() {
-  if (PNG) mkdirSync(PNG, { recursive: true });
+// Cambia el escenario 3 de `campo` (field.dat) y su miniatura en `sys` (tex_sys42 en RGBA8).
+export function noche(campo, sys) {
   cielo(); luna();
   deNoche(leerBmt(sacar('obj/tex_f050.bmt')), PASTO, 'tex_f093');
   deNoche(leerBmt(sacar('obj/tex_f053.bmt')), PASTO.map(([t, c]) => [t, c.map((v) => v * 0.9)]), 'tex_f094');
@@ -508,7 +444,7 @@ export function principal() {
   modelo(copia('mod_f054', 'mod_f096', (m) => { m.mats[0].tex = 'tex_f095.bmt'; m.mats[1].tex = 'tex_f096.bmt'; estirarPasto(m, m.mats[2]); anexar(m, cortaderasCerca()); }));
   modelo(copia('mod_f053', 'mod_f097', (m) => { m.mats[0].col.splice(0, 3, 0.45, 0.56, 0.85); })); // neblina azulada
 
-  const campo = leerCampo(sacar('dat/field.dat')), e = campo[ESCENARIO];
+  const e = campo[ESCENARIO];
   const M = (nombre, tipo, z, escribeZ, mezcla) => ({ nombre: `${nombre}.nmd`, tipo, z, escribeZ, mezcla, pruebaAlfa: 0 });
   e.modelos = [
     M('mod_f093', 3, 1, 1, 0), // piso: el primero, su textura se corre con la pelea
@@ -521,15 +457,5 @@ export function principal() {
     M('mod_f096', 3, 1, 0, 2), // montes, árboles de cartel y cortaderas
   ];
   Object.assign(e, { efecto: 3, difusa: [0.74, 0.82, 1.08, 1], ambiente: [0.4, 0.44, 0.6, 1], dir: [0.18, -0.45, 0.3] });
-  salidas.push({ nombre: 'dat/field.dat', datos: escribirCampo(campo) });
-  miniatura(e);
-
-  const v2 = readFileSync(join(JUEGO, 'vsobj2.dat')), nuevos = new Set(salidas.map((s) => s.nombre));
-  const viejos = leerDat1Tabla(v2).filter((x) => !nuevos.has(x.nombre)).map((x) => ({ nombre: x.nombre, datos: v2.subarray(x.offset, x.offset + x.tam) }));
-  mkdirSync(join(SCRATCH, 'mods'), { recursive: true });
-  const destino = join(SCRATCH, 'mods', 'vsobj2.dat');
-  writeFileSync(destino, escribirDat1([...salidas, ...viejos]));
-  console.log(`${salidas.length} archivos nuevos (${[...modelos.keys()].join(', ')}) -> ${destino}`);
+  miniatura(e, ESCENARIO, sys, 'vista-noche.png');
 }
-
-if (import.meta.url === `file:///${process.argv[1]?.replaceAll('\\', '/')}`) principal();

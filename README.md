@@ -52,31 +52,68 @@ resto), sin tocar el ejecutable, y también cambia la miniatura de la selección
 ![Pelea en Sunlit Shore en el Galaxy A52, a 60 fps](docs/img/playa-pelea.jpg)
 
 Una playa al sol que **se suma** a los siete escenarios de siempre: es el décimo de `field.dat` y el octavo lugar de
-la rueda de selección, antes de Random. Mar turquesa con espuma en la orilla, rompientes y un camino de brillo bajo el
-sol, palmeras que se inclinan sobre el agua, rocas, dos promontorios (uno con faro), un muelle con salvavidas, un bote
-varado, sombrilla con reposeras, un parador de paja entre médanos con pasto, un velero, islas en el horizonte y
-cúmulos con gaviotas. Como Outskirt Hill, todo sale de código (`tools/escenario/playa.mjs`), también el nombre de la
-rueda, que se arma recortando letras de los otros nombres para que tenga la misma tipografía.
-
-![La rueda de escenarios con Sunlit Shore](docs/img/playa-rueda.jpg)
-
-Para tener un escenario más hay que cambiar el juego: la rueda tenía ocho lugares fijos, el 9 era la marca de "al
-azar" y Random elegía entre 7. `analisis/parches.txt` cambia 34 instrucciones y una constante del exe al traducirlo
-(la cantidad de lugares, el mapeo lugar → escenario, el azar entre 8 y las coordenadas de las texturas de la rueda,
-que ahora miden el doble de alto) y agrega cinco fragmentos de C. El resto de la lógica, la IA y el modo arcade no
-cambian.
+la rueda de selección. Mar turquesa con espuma en la orilla, rompientes y un camino de brillo bajo el sol, palmeras
+que se inclinan sobre el agua, rocas, dos promontorios (uno con faro), un muelle con salvavidas, un bote varado,
+sombrilla con reposeras, un parador de paja entre médanos con pasto, un velero, islas en el horizonte y cúmulos con
+gaviotas. Como Outskirt Hill, todo sale de código (`tools/escenario/playa.mjs`), también el nombre de la rueda, que
+se arma recortando letras de los otros nombres para que tenga la misma tipografía.
 
 ![Sunlit Shore sin HUD, renderizado por software](docs/img/playa-escenario.jpg)
 
+## Escenario nuevo: Lost Grave -Undead-
+
+![Pelea en Lost Grave -Undead-](docs/img/undead-pelea.jpg)
+
+El noveno lugar de la rueda: Lost Grave de noche con luna roja, barricadas, tachos y un auto en llamas, y una horda
+de zombis que se mueve. Unos empujan contra las barricadas estirando los brazos y otros dan vueltas alrededor de la
+pelea. Los zombis, sus sombras y las llamas son modelos del escenario que llevan sus huesos en vértices de datos; el
+port los anima en cada cuadro (`d3d/animado.c`). Sale de `tools/escenario/zombis.mjs`.
+
+## Escenario nuevo: Eclipse Caldera, con columnas para saltar
+
+![Camille arriba de una columna de basalto en Eclipse Caldera](docs/img/caldera-pelea.jpg)
+
+El décimo lugar de la rueda: una isla de basalto en un lago de lava, adentro de la caldera de un volcán, bajo un
+eclipse total. Un cristal de fuego gigante gira y flota sobre la lava, caen cascadas de lava de la caldera, arden
+braseros en la orilla y suben brasas. Y tiene **desniveles de verdad**: 17 columnas de basalto de 3,5 a 20 de alto
+(los luchadores miden ~20 y saltan ~16,5). Detrás de cada luchador hay una escalera de tres columnas, y al norte otra
+que llega a una cumbre a la que solo se sube desde otra columna. Las columnas son piso para el que cae arriba, pared
+para el que está más abajo (hay que saltarlas), se baja caminando por el borde y la sombra cae sobre la tapa. La arena
+tiene borde: no se puede salir al lago.
+
+![El arranque de la ronda: el cristal, el eclipse sobre el volcán y los escalones a los costados](docs/img/caldera-arranque.jpg)
+
+El juego original tiene el piso en y = 0 en todos lados: compara la altura con 0 para saber si alguien está parado y
+la deja en 0 al caer. Para que haya desniveles, el traductor acepta **ganchos** (`analisis/ganchos.txt`): funciones
+en C (`runtime/escenarios.c`) que corren justo antes de una instrucción del exe, con los registros a mano. Con 52
+ganchos las 41 comparaciones de la altura pasan a medir contra la tapa que hay debajo, la caída se apoya en ella, las
+columnas más altas que el luchador lo empujan para afuera y las sombras se proyectan sobre la tapa. Además, los
+modelos `mod_w*` quedan fijos en el mundo, mientras el resto del escenario, como en el original, sigue al centro de la
+pelea. Las columnas se leen de `dat/suelo.dat`, que va adentro de `vsobj2.dat` con el resto del escenario
+(`tools/escenario/caldera.mjs`).
+
+## La rueda con los escenarios nuevos
+
+| | | |
+|---|---|---|
+| ![La rueda en Sunlit Shore](docs/img/playa-rueda.jpg) | ![La rueda en Lost Grave -Undead-](docs/img/undead-rueda.jpg) | ![La rueda en Eclipse Caldera](docs/img/caldera-rueda.jpg) |
+
+Para tener escenarios nuevos hay que cambiar el juego: la rueda tenía ocho lugares fijos, el 9 era la marca de "al
+azar" y Random elegía entre 7. `analisis/parches.txt` cambia 34 instrucciones y una constante del exe al traducirlo
+(la cantidad de lugares, que pasa a 11, el mapeo lugar → escenario, el azar entre los 10 escenarios y las coordenadas
+de las texturas de la rueda, que ahora miden el doble de alto) y agrega cinco fragmentos de C. Random queda último y
+al volver de una pelea la rueda arranca en el escenario jugado. El resto de la lógica, la IA y el modo arcade no
+cambian.
+
 ```sh
-node tools/escenario/playa.mjs          # _scratch/hino-android/mods/vsobj2.dat con Outskirt Hill de noche y Sunlit Shore
-node tools/apk.mjs --datos --release    # el APK sale con los dos escenarios
-node tools/escenario/ver.mjs 9 vista.png  # mirar un escenario sin correr el juego (la imagen de arriba)
-npm test                                # prueba las herramientas de escenarios y los parches
+node tools/escenario/mods.mjs           # _scratch/hino-android/mods/vsobj2.dat: Outskirt Hill de noche, los tres nuevos y la letra del lobby
+node tools/apk.mjs --datos --release    # el APK sale con los escenarios nuevos
+node tools/escenario/ver.mjs 9 vista.png  # mirar un escenario sin correr el juego (la playa, arriba)
+npm test                                # prueba las herramientas de escenarios, los parches y el servidor de salas
 ```
 
-El código traducido con los parches necesita esos datos: sin ellos la rueda no encuentra la textura ni el escenario
-nuevos.
+El código traducido con los parches necesita esos datos: sin ellos la rueda no encuentra las texturas ni los
+escenarios nuevos.
 
 ## Juego en red con salas
 
@@ -150,7 +187,7 @@ Galaxy A52 real corrió casi 8 minutos seguidos (27.900 cuadros) sin cortes.
   sobre `double` con la precisión de 24/53 bits que deja Direct3D, código descubierto por punteros en datos.
   9.306 funciones, 424 mil instrucciones, 0 sin soporte que se ejecuten. Antes de traducir aplica
   `analisis/parches.txt`: bytes del exe que cambian (se verifica el original) y C que se inserta antes de una
-  instrucción.
+  instrucción; `analisis/ganchos.txt` suma funciones del runtime que corren antes de una instrucción.
 - **`runtime/`** — 4 GB de memoria del invitado, hilos con su TEB, despacho indirecto, manejo de fallas. Un
   candado del invitado hace que los hilos del juego no corran a la vez: el juego cuenta con el orden de memoria de
   x86, y en ARM real el hilo de la música leía datos a medio escribir.
@@ -174,8 +211,8 @@ paquete `SDL3-devel-3.4.18-VC.zip` y `sdl3-android/SDL3-3.4.18.aar`).
 
 ```sh
 npm install
-node recomp/traducir.mjs <ruta>/hinokakera.exe     # genera gen/ (C, imagen.bin) desde tu copia del juego
-node tools/escenario/playa.mjs                     # los escenarios nuevos y la letra del lobby (los pide el código parcheado)
+node recomp/traducir.mjs <ruta>/hinokakera.exe     # genera gen/ (C, imagen.bin) desde tu copia del juego, con parches y ganchos
+node tools/escenario/mods.mjs                      # los escenarios nuevos y la letra del lobby (los pide el código parcheado)
 node tools/compilar.mjs                            # Windows: build/win/hinokakera.exe
 # glifos para Android: compilar tools/c/gen_glifos.c y correr gen_glifos.exe <hinokakera.exe> gen/glifos.bin
 node tools/icono.mjs                               # ícono del APK, sacado del exe

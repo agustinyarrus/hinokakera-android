@@ -4,14 +4,14 @@
 // que van en mods/vsobj2.dat junto con los escenarios. El lobby escribe con ellas en el momento (también las ayudas
 // de arriba, a 0,8).
 //
-//   node tools/sala/letras.mjs [--png carpeta]   (también lo corre tools/escenario/playa.mjs)
+//   node tools/sala/letras.mjs [--png carpeta]   (también lo corre tools/escenario/mods.mjs)
 //
 // sala.txt: "letras n separación espacio" y una línea por letra: código, x, y, ancho y alto en el atlas, corrimiento
 // del recorte respecto del trazo (x) y de la línea base (y), y ancho del trazo (lo que avanza la pluma, más la
 // separación).
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { sacar } from '../escenario/moonlit.mjs';
+import { sacar } from '../escenario/comun.mjs';
 import { leerBmt, escribirBmt, png } from '../escenario/bmt.mjs';
 
 // [textura, banda (y desde, alto)], x del trazo desde y hasta, escala, avance y línea base (dentro de la banda) si

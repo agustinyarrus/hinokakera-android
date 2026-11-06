@@ -820,8 +820,13 @@ void dibujar(int indexado, uint32_t tipo, uint32_t base, uint32_t n_prim, uint32
     if (up_v) { if (s) continue; stride = up_stride; va = up_v; }
     else { if (!d->stream[s].b) continue; stride = d->stream[s].stride; va = d->stream[s].b->va + d->stream[s].off; }
     if (!subido[s]) {
+      const uint8_t *src = MEM + va + v_ini * stride, *anim;
+      if (!up_v && s == 0 && a[A_POS].presente && a[A_POS].tipo == 2 && a[A_T0].presente && a[A_T0].tipo == 1 && a[A_T0].stream == 0 &&
+          (anim = animado_vertices(d->stream[0].b, stride, a[A_POS].offset, a[A_NOR].presente && a[A_NOR].tipo == 2 ? (int)a[A_NOR].offset : -1,
+                                   a[A_T0].offset, d->stream[0].off + v_ini * stride)))
+        src = anim;
       glBindBuffer(GL_ARRAY_BUFFER, vbo[s]);
-      glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(v_n * stride), MEM + va + v_ini * stride, GL_STREAM_DRAW);
+      glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(v_n * stride), src, GL_STREAM_DRAW);
       subido[s] = 1;
     } else glBindBuffer(GL_ARRAY_BUFFER, vbo[s]);
     GLint comp; GLenum tipo_gl; GLboolean norm;

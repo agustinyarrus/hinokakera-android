@@ -1,7 +1,34 @@
 // Texturas BMT_ de Hinokakera CE (formato sacado del cargador del juego, 0x40c250 en el exe): color indexado.
 //   "BMT_", u16 ancho, u16 alto, u8 n (bytes por índice), n bytes = colores - 1, paleta (u32 ARGB) y
 //   ancho*alto índices de n bytes, fila 0 arriba.
-import { deflateSync, crc32 } from 'node:zlib';
+import { deflateSync, inflateSync, crc32 } from 'node:zlib';
+
+// PNG de 8 bits RGBA o RGB sin entrelazar (las que escriben png() y System.Drawing) -> { w, h, rgba }.
+export function leerPng(b) {
+  let p = 8, w, h, ct;
+  const idat = [];
+  while (p < b.length) {
+    const n = b.readUInt32BE(p), t = b.toString('ascii', p + 4, p + 8);
+    if (t === 'IHDR') { w = b.readUInt32BE(p + 8); h = b.readUInt32BE(p + 12); ct = b[p + 17]; if (b[p + 16] !== 8 || b[p + 20]) throw new Error('PNG no soportada'); }
+    if (t === 'IDAT') idat.push(b.subarray(p + 8, p + 8 + n));
+    p += 12 + n;
+  }
+  const bpp = ct === 6 ? 4 : ct === 2 ? 3 : 0;
+  if (!bpp) throw new Error('PNG no soportada');
+  const raw = inflateSync(Buffer.concat(idat)), st = w * bpp, o = Buffer.alloc(w * h * bpp);
+  for (let y = 0; y < h; y++) {
+    const f = raw[y * (st + 1)];
+    for (let x = 0; x < st; x++) {
+      const a = x >= bpp ? o[y * st + x - bpp] : 0, up = y ? o[(y - 1) * st + x] : 0, c = x >= bpp && y ? o[(y - 1) * st + x - bpp] : 0, r = raw[y * (st + 1) + 1 + x];
+      const pp = a + up - c, pa = Math.abs(pp - a), pb = Math.abs(pp - up), pc = Math.abs(pp - c);
+      o[y * st + x] = (r + [0, a, up, (a + up) >> 1, pa <= pb && pa <= pc ? a : pb <= pc ? up : c][f]) & 255;
+    }
+  }
+  if (bpp === 4) return { w, h, rgba: o };
+  const q = Buffer.alloc(w * h * 4);
+  for (let i = 0; i < w * h; i++) q.set([o[3 * i], o[3 * i + 1], o[3 * i + 2], 255], 4 * i);
+  return { w, h, rgba: q };
+}
 
 export function leerBmt(b) {
   if (b.toString('latin1', 0, 4) !== 'BMT_') throw new Error('no es BMT_');

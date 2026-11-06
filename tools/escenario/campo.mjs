@@ -38,3 +38,17 @@ export function escribirCampo(escenarios) {
   }
   return Buffer.concat(partes);
 }
+
+// dat/suelo.dat (lo lee runtime/plataformas.c): "sue1", u32 cantidad y por cada escenario con desniveles u32 número
+// de escenario, f32 radio de la arena (0 = sin borde), u32 columnas y cada una f32 x, z, radio, alto. Unidades del
+// juego (los modelos del escenario van a escala 20).
+export function escribirSuelo(terrenos) {
+  const b = Buffer.alloc(8 + terrenos.reduce((s, t) => s + 12 + 16 * t.columnas.length, 0));
+  b.write('sue1', 0, 'latin1'); b.writeUInt32LE(terrenos.length, 4);
+  let p = 8;
+  for (const t of terrenos) {
+    b.writeUInt32LE(t.etapa, p); b.writeFloatLE(t.radio, p + 4); b.writeUInt32LE(t.columnas.length, p + 8); p += 12;
+    for (const c of t.columnas) { for (const v of [c.x, c.z, c.r, c.alto]) { b.writeFloatLE(v, p); p += 4; } }
+  }
+  return b;
+}

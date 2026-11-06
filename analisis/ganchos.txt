@@ -1,0 +1,64 @@
+# Ganchos: funciones del runtime que corren justo antes de una instrucción del exe, con los registros del invitado al
+# día en el contexto (recomp/traducir.mjs y recomp/emitir.mjs). Cada línea:  dirección  función  # por qué
+# Todos son de runtime/escenarios.c: los desniveles de los escenarios agregados (Eclipse Caldera, el 11, tiene
+# columnas a las que subirse). La rueda de selección se cambia con analisis/parches.txt.
+#
+# Carga de field.dat (tercer argumento: el número de escenario): elige las columnas del escenario.
+4984b0 g_escenario
+# Lazo que lleva los modelos del escenario al centro de la pelea: los mod_w* quedan fijos en el mundo.
+498c22 g_modelo_fijo
+# Física de los luchadores (f_0046b600): altura al entrar, caída sobre las tapas y paredes antes de mover el modelo.
+46b600 g_fisica_entra
+46bb13 g_y_pisa   # después de "altura = 0" al caer (46bb0d)
+46bb79 g_choque_fisica
+# Sombras de los modelos (D3DXMatrixShadow sobre y = 0): el plano pasa a la tapa que tienen debajo.
+4062d5 g_sombra
+# SetPosition (f_0046f760, la usan el empuje entre luchadores y los agarres): paredes y borde de la arena.
+46f786 g_choque_posicion
+# "Altura = 0" en el estado del luchador (f_00465e10): después de una comparación, o suelto.
+46758a g_y_pisa
+46a367 g_y_pisa
+468c70 g_y_mide   # copia otra posición y anula la altura (468c70): se mide el piso antes
+468c7a g_y_pisa
+# Comparaciones de la altura (cargada en ST0) con 0 (o con 8 en 465838): pasan a ser contra el piso de ese lugar.
+4616dd g_y_esi  # f_00461690, altura en 4616d7
+4657c8 g_y_ecx  # f_00465730, altura en 4657c2
+465817 g_y_ecx  # f_00465730, altura en 465811
+465838 g_y_ecx  # f_00465730, altura en 465832
+466c3e g_y_esi  # f_00465e10, altura en 466c38
+466dab g_y_esi  # f_00465e10, altura en 466da5
+466e7a g_y_esi  # f_00465e10, altura en 466e74
+467577 g_y_esi  # f_00465e10, altura en 467571
+46a354 g_y_esi  # f_00465e10, altura en 46a34e
+46b784 g_y_esi  # f_0046b600, altura en 46b77e
+46b7ab g_y_esi  # f_0046b600, altura en 46b7a5
+46bb00 g_y_cae  # f_0046b600, altura en 46bafa
+46bc42 g_y_esi  # f_0046b600, altura en 46bc3c
+46c31a g_y_esi  # f_0046c170, altura en 46c314
+46c336 g_y_esi  # f_0046c170, altura en 46c330
+46c73a g_y_esi  # f_0046c170, altura en 46c734
+46c87d g_y_esi  # f_0046c170, altura en 46c877
+46c948 g_y_esi  # f_0046c170, altura en 46c942
+46caa4 g_y_esi  # f_0046c170, altura en 46ca9e
+46cabc g_y_esi  # f_0046c170, altura en 46cab6
+46cb55 g_y_esi  # f_0046c170, altura en 46cb4f
+46ccb9 g_y_esi  # f_0046c170, altura en 46ccb3
+46cd58 g_y_esi  # f_0046c170, altura en 46cd52
+46d7d2 g_y_esi  # f_0046c170, altura en 46d7cc
+46e127 g_y_esi  # f_0046c170, altura en 46e121
+46e166 g_y_esi  # f_0046c170, altura en 46e160
+46e1e5 g_y_esi  # f_0046c170, altura en 46e1df
+46e229 g_y_esi  # f_0046c170, altura en 46e223
+46e26a g_y_esi  # f_0046c170, altura en 46e264
+46e40e g_y_esi  # f_0046c170, altura en 46e408
+46e5af g_y_esi  # f_0046c170, altura en 46e5a9
+46e60d g_y_esi  # f_0046c170, altura en 46e607
+46e6b5 g_y_esi  # f_0046c170, altura en 46e6af
+46e77c g_y_esi  # f_0046c170, altura en 46e776
+46e84b g_y_esi  # f_0046c170, altura en 46e845
+46e8f9 g_y_esi  # f_0046c170, altura en 46e8e6
+46e96e g_y_esi  # f_0046c170, altura en 46e95f
+46e9e4 g_y_esi  # f_0046c170, altura en 46e9d3
+46ea8c g_y_esi  # f_0046c170, altura en 46ea86
+46eb2e g_y_esi  # f_0046c170, altura en 46eb28
+46ec37 g_y_esi  # f_0046c170, altura en 46ec31

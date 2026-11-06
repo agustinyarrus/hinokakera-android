@@ -1,22 +1,10 @@
-// Sunlit Shore: escenario nuevo de playa con sol (el 10.º de field.dat, el número 9; la rueda de selección lo
-// muestra en el lugar 7 con los parches de analisis/parches.txt). Primero arma Outskirt Hill de noche
-// (moonlit.mjs) y después le suma la playa al mismo <scratch>/mods/vsobj2.dat: field.dat con 10 escenarios, la
-// rueda con su nombre y su miniatura (texturas más altas) y los modelos y texturas de la playa.
-// Uso: node tools/escenario/playa.mjs [--png carpeta]   (--png guarda las texturas y una vista con la cámara del juego)
-import { writeFileSync, mkdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { SCRATCH } from '../datos.mjs';
-import { leerDat1, escribirDat1 } from '../dat1.mjs';
-import { escribirNmd } from './nmd.mjs';
-import { leerBmt } from './bmt.mjs';
-import { leerCampo, escribirCampo } from './campo.mjs';
+// Sunlit Shore: escenario nuevo de playa con sol (el número 9 de field.dat; la rueda de selección lo muestra en el
+// lugar 7 con los parches de analisis/parches.txt). Lo arma tools/escenario/mods.mjs junto con los demás.
 import { Lienzo, azar, fbm, perlin, sat, suave, mezclar, hex, trazo } from './pintura.mjs';
 import { Malla, unit, cruz, resta, suma, escalar, punto, rotY } from './geometria.mjs';
-import { vista } from './vista.mjs';
-import { principal as noche, sacar, elevAV, vAElev, domo } from './moonlit.mjs';
-import { archivosSala } from '../sala/letras.mjs';
+import { elevAV, vAElev, domo } from './moonlit.mjs';
+import { textura, modelo, miniatura } from './comun.mjs';
 
-const PNG = process.argv.includes('--png') ? process.argv[process.argv.indexOf('--png') + 1] : null;
 export const ESCENARIO = 9, LUGAR = 7; // número en field.dat y lugar en la rueda (ver analisis/parches.txt)
 const RAD = Math.PI / 180;
 
@@ -33,17 +21,6 @@ const caida = (th) => { const t = thMar(th); return suave(MAR.a0 - 25, MAR.a0, t
 export const alturaPiso = (r, th) => { const c = caida(th), o = orilla(th); return -c * (0.15 * suave(5.5, o + 0.3, r) + 0.6 * suave(o, o + 5, r)); };
 export const PROMONTORIOS = [{ ang: -14, dist: 21, faro: true }, { ang: 194, dist: 21 }];
 
-const base = new Map(); // lo que dejó moonlit.mjs en mods/vsobj2.dat
-const leer = (nombre) => base.get(nombre) ?? sacar(nombre);
-const salidas = new Map(); // nombre -> datos (reemplaza a lo de base)
-const generadas = new Map(); // textura -> RGBA8, para la vista
-const modelos = new Map();
-function textura(nombre, L) {
-  generadas.set(`${nombre}.bmt`, { w: L.w, h: L.h, rgba: L.rgba8() });
-  salidas.set(`obj/${nombre}.bmt`, L.bmt());
-  if (PNG) writeFileSync(join(PNG, `${nombre}.png`), L.png());
-}
-const modelo = (m) => { modelos.set(m.nombre, m); salidas.set(`obj/${m.nombre}.nmd`, escribirNmd(m)); };
 const dirA = (ang, elev = 0) => [Math.cos(elev * RAD) * Math.cos(ang * RAD), Math.sin(elev * RAD), Math.cos(elev * RAD) * Math.sin(ang * RAD)];
 const enPiso = (ang, dist, dy = 0) => { const d = dirA(ang); return [d[0] * dist, alturaPiso(dist, ang) + Math.max(0, medano(dist, ang) + 0.06) + dy, d[2] * dist]; };
 const gradiente = (stops, t) => {
@@ -714,44 +691,9 @@ export function fila(t, texto, separacion = 2, espacio = 9) {
   return L;
 }
 
-// Nombres (256x512, filas de 32): 0-6 los del juego, 7 la playa, 8 Random y la 15 otra vez Random.
-function nombres() {
-  const t = leerBmt(leer('obj/tex_sys24.bmt')), L = new Lienzo(256, 512);
-  const copiar = (yo, yd, h) => { for (let y = 0; y < h; y++) for (let x = 0; x < 256; x++) L.d.set([0, 1, 2, 3].map((k) => t.rgba[4 * ((yo + y) * 256 + x) + k] / 255), 4 * ((yd + y) * 256 + x)); };
-  copiar(0, 0, 7 * 32); copiar(7 * 32, 8 * 32, 32); copiar(7 * 32, 15 * 32, 32);
-  L.d.set(fila(t, NOMBRE).d, 4 * LUGAR * 32 * 256);
-  textura('tex_sys24', L);
-}
-
-// Miniaturas (512x1024, franjas de 64): 0-6 las del juego (con la de Outskirt Hill de noche), 7 la playa con el
-// alfa de las otras, 8 Random, la 9 repite la 0 y la 15 Random (el anterior de la 0 y el siguiente de Random).
-function miniaturas(e) {
-  const t = leerBmt(leer('obj/tex_sys42.bmt')), L = new Lienzo(512, 1024);
-  const copiar = (yo, yd, h) => { for (let y = 0; y < h; y++) for (let x = 0; x < 512; x++) L.d.set([0, 1, 2, 3].map((k) => t.rgba[4 * ((yo + y) * 512 + x) + k] / 255), 4 * ((yd + y) * 512 + x)); };
-  copiar(0, 0, 448); copiar(192, 448, 64); copiar(448, 512, 64); copiar(0, 576, 64); copiar(448, 960, 64);
-  const img = render(e, 1024, 256, { pos: [0, 1.1, -5.7], rumbo: 82, cabeceo: 1, fovV: 17 });
-  for (let y = 0; y < 64; y++) for (let x = 0; x < 256; x++) { // promedio de 4x4
-    const c = [0, 0, 0];
-    for (let dy = 0; dy < 4; dy++) for (let dx = 0; dx < 4; dx++) for (let k = 0; k < 3; k++) c[k] += Math.min(1, img[3 * ((4 * y + dy) * 1024 + 4 * x + dx) + k]) / 16;
-    L.d.set(c, 4 * ((448 + y) * 512 + x));
-  }
-  textura('tex_sys42', L);
-}
-
-// Vista del escenario sin HUD ni personajes (el rasterizador de vista.mjs).
-function render(e, w, h, cam) {
-  const tex = (n) => generadas.get(n) || leerBmt(leer(`obj/${n}`));
-  const mods = e.modelos.map((m) => ({ ...m, nmd: modelos.get(m.nombre.replace('.nmd', '')) }));
-  const cache = new Map(), texturas = (n) => (cache.has(n) ? cache.get(n) : cache.set(n, tex(n)).get(n));
-  return vista({ w, h, modelos: mods, texturas, luz: { difusa: e.difusa, ambiente: e.ambiente, dir: e.dir }, cam });
-}
-
-export function principal() {
-  noche();
-  const v2 = readFileSync(join(SCRATCH, 'mods', 'vsobj2.dat'));
-  for (const x of leerDat1(v2)) base.set(x.nombre, v2.subarray(x.offset, x.offset + x.tam));
-  if (PNG) mkdirSync(PNG, { recursive: true });
-
+// Agrega el escenario 9 a `campo` y pone su miniatura y su nombre en la fila 7 de tex_sys42 y tex_sys24 (las dos ya
+// con las filas de la rueda, ver rueda() en comun.mjs).
+export function playa(campo, s42, s24) {
   cielo(); sol(); mar(); arena(); hojas(); corteza(); roca(); madera(); paja(); pintura(); verde();
   const { M, P, F } = cosas();
   modelo(piso().aNmd('mod_f100'));
@@ -762,7 +704,6 @@ export function principal() {
   modelo(F.aNmd('mod_f105'));
   modelo(P.aNmd('mod_f106'));
 
-  const campo = leerCampo(leer('dat/field.dat'));
   if (campo.length !== ESCENARIO) throw new Error(`field.dat tiene ${campo.length} escenarios (se esperaban ${ESCENARIO})`);
   const C = (nombre, tipo, z, escribeZ, mezcla, pruebaAlfa = 0) => ({ nombre: `${nombre}.nmd`, tipo, z, escribeZ, mezcla, pruebaAlfa });
   const e = {
@@ -779,20 +720,6 @@ export function principal() {
     efecto: 0, efecto2: 0, difusa: [1.18, 1.1, 0.96, 1], ambiente: [0.6, 0.64, 0.72, 1], dir: [-0.2, -0.55, 0.35], viento: [3, 0, -6],
   };
   campo.push(e);
-  salidas.set('dat/field.dat', escribirCampo(campo));
-  nombres(); miniaturas(e);
-  for (const { nombre, datos } of archivosSala()) salidas.set(nombre, datos); // la letra del lobby de salas (d3d/sala.c)
-  if (PNG) for (const [nombre, cam] of [['vista-playa', [0, 1, -5.7, 90, 0]], ['vista-izq', [0, 1, -5.7, 140, 1]], ['vista-der', [0, 1, -5.7, 25, 1]], ['vista-atras', [0, 1, 5.7, 270, 1]]]) {
-    const ang = cam[3], pos = [-Math.cos(ang * RAD) * 5.7, cam[1], -Math.sin(ang * RAD) * 5.7];
-    const G = render(e, 1332, 600, { pos, rumbo: ang, cabeceo: cam[4], fovV: 30.6 }), V = new Lienzo(1332, 600);
-    for (let i = 0; i < 1332 * 600; i++) V.d.set([Math.min(1, G[3 * i]), Math.min(1, G[3 * i + 1]), Math.min(1, G[3 * i + 2]), 1], 4 * i);
-    writeFileSync(join(PNG, `${nombre}.png`), V.png());
-  }
-
-  const todo = [...[...salidas].map(([nombre, datos]) => ({ nombre, datos })), ...[...base].filter(([n]) => !salidas.has(n)).map(([nombre, datos]) => ({ nombre, datos }))];
-  const destino = join(SCRATCH, 'mods', 'vsobj2.dat');
-  writeFileSync(destino, escribirDat1(todo));
-  console.log(`playa: ${salidas.size} archivos (${[...modelos].map(([n, m]) => `${n} ${m.vs.length}v`).join(', ')}) -> ${destino}`);
+  s24.rgba.set(fila(s24, NOMBRE).rgba8(), 4 * LUGAR * 32 * s24.w); // con letras de los otros nombres (filas 0-6)
+  miniatura(e, LUGAR, s42, 'vista-playa.png', { pos: [0, 1.1, -5.7], rumbo: 82, cabeceo: 1, fovV: 17 });
 }
-
-if (import.meta.url === `file:///${process.argv[1]?.replaceAll('\\', '/')}`) principal();

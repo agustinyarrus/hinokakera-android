@@ -14,7 +14,6 @@ const hex = n => `0x${(n >>> 0).toString(16)}u`;
 
 const pe = leerPE(exe);
 const raiz = new URL('../analisis/', import.meta.url);
-
 // Parches (analisis/parches.txt): bytes del exe que se cambian antes de desensamblar y código C que se
 // inserta antes de una instrucción. La imagen parcheada es también la de imagen.bin.
 const inyecciones = aplicarParches(readFileSync(new URL('parches.txt', raiz), 'utf8'), pe.imagen, pe.base);
@@ -31,6 +30,14 @@ const reemplazos = new Map();
 for (const l of readFileSync(new URL('reemplazos.txt', raiz), 'utf8').split('\n')) {
   const m = l.match(/^([0-9a-f]+)\s+(\w+)/i);
   if (m) reemplazos.set(parseInt(m[1], 16), m[2]);
+}
+
+// Ganchos (analisis/ganchos.txt): funciones del runtime que corren justo antes de una instrucción, con los registros
+// del invitado al día en el contexto (pueden leerlos y cambiarlos).
+const ganchos = new Map();
+for (const l of readFileSync(new URL('ganchos.txt', raiz), 'utf8').split('\n')) {
+  const m = l.match(/^([0-9a-f]+)\s+(\w+)/i);
+  if (m) ganchos.set(parseInt(m[1], 16), m[2]);
 }
 
 const NO_VUELVEN = new Set(['KERNEL32.DLL!ExitProcess', 'KERNEL32.DLL!ExitThread', 'KERNEL32.DLL!FatalAppExitA', 'KERNEL32.DLL!FatalExit']);
@@ -107,7 +114,7 @@ for (let vuelta = 1, estable = false; !estable; vuelta++) {
 }
 
 const ctx = {
-  noSoportadas: [], analisis, entra, devuelve, inyecciones,
+  noSoportadas: [], analisis, entra, devuelve, inyecciones, ganchos, puestos: new Set(),
   trazar: new Set((process.env.HINO_TRAZA ?? '').split(',').filter(Boolean).map(x => parseInt(x, 16))),
   llamarDirecto: d => res.has(d) ? `${nombreFn(d)}(c);` : `despachar(c, ${hex(d)});`,
 };
@@ -132,7 +139,10 @@ void ${nombreFn(e)}(Ctx *c) { ${reemplazos.get(e)}(c); }`, ''); continue; }
   writeFileSync(join(salida, `fn_${String(n).padStart(3, '0')}.c`), partes.join('\n'));
 }
 
-writeFileSync(join(salida, 'funciones.h'), ['#pragma once', ...orden.map(e => `void ${nombreFn(e)}(Ctx *c);`)].join('\n') + '\n');
+const sinPoner = [...inyecciones.keys(), ...ganchos.keys()].filter(va => !ctx.puestos.has(va));
+if (sinPoner.length) throw new Error(`código de parches.txt o ganchos que no caen en una instrucción traducida: ${sinPoner.map(va => va.toString(16)).join(' ')}`);
+writeFileSync(join(salida, 'funciones.h'), ['#pragma once', ...orden.map(e => `void ${nombreFn(e)}(Ctx *c);`),
+  ...[...new Set(ganchos.values())].map(g => `void ${g}(Ctx *c);`)].join('\n') + '\n');
 const imps = [...pe.importaciones].sort((a, b) => a[0] - b[0]);
 writeFileSync(join(salida, 'tabla.c'), [
   '#include "../runtime/cpu.h"', '#include "funciones.h"', '',

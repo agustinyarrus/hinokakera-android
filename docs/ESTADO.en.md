@@ -316,4 +316,154 @@ subtractions are signed (`pasaron`).
 password, a wrong password, joining, kicking, joining again, starting and fighting. The phone was left with the new
 version installed.
 
-<!-- i18n source=ESTADO.md sha256=5671dd7b5691 -->
+## 2026-11-05 — Lost Grave -Undead-: a new stage with zombies
+
+**Done**
+- **Stage 10, the ninth option of the VS wheel** (it comes after ( Random ), right before Lost Grave -Blue-): Lost
+  Grave at night with a red moon, smoke and fires on the horizon, a ring of barricades (striped concrete barriers,
+  sandbags, barrels and burnt cars) and 46 zombies that move: the ones pushing against the barricades reach out with
+  their arms and nod, and 20 circle in two lanes, each lane its own way and at an even speed (they don't cross each
+  other). 5 barrels and a car are burning, with flickering flames and a glow on the ground. Random still picks among
+  the 7 originals. `node tools/escenario/mods.mjs` builds the two new stages (the night one and this one) into
+  `mods/vsobj2.dat`; what they share went into `tools/escenario/comun.mjs`.
+- **Patches to the exe** (`analisis/parches.txt`; `recomp/traducir.mjs` applies them before translating and stops if
+  the original bytes don't match): the wheel goes from 8 to 9 options; on confirming, option 7 (Random) gives 9 and
+  8 gives 10; setting up the VS fight takes "x == 9" as random (before, "x >= 9"); going back to the wheel, the cap
+  goes from 7 to 8. Stage 9 of field.dat stays as a copy of 0, because 9 is the "random" marker. The stage number is
+  only used to load field.dat (the loader at 0x4984b0, which is already data-driven), the snow of Lost Grave -white-
+  and the wheel cursor: there are no tables of 9 to overrun.
+- **One more row without touching the code that draws the wheel** (0x490af0): names (`tex_sys24`, 8 rows of 32) and
+  thumbnails (`tex_sys42`, bands of 64) are cut with fixed fractions and 7 is Random by hand; row 8 asks for v from 1
+  to 2. Both textures go at double height with two transparent marker pixels at the end (CCFFEE and BBDD55; the high
+  digit is checked so it survives the 16-bit formats); `textura_subir` recognizes them and the fragment shader
+  multiplies v by `u_esc` (1 for all the others: times 1.0 doesn't change a bit). The name comes from
+  `tools/escenario/texto.ps1` (GDI+, Times New Roman bold italic, widened, like the originals).
+- **Animated models** (`d3d/animado.c`): if the first vertices of a VB carry the signature 7777 -3131 2468, they are
+  data no triangle uses (bones with their pivot, figures, the bone of each vertex, in position and uv) and the rest
+  are the figures in their rest pose, each one in its local space and with the same mesh. Every frame they are
+  uploaded placed and animated from a copy; the game's VB isn't touched and time comes from the frame number (the
+  captures repeat). Zombies with 7 bones (hunched, head drooping, arms reaching out, hanging or one torn off, a limp),
+  1-bone shadows that follow their zombie and 2-bone fires (a still glow, a flame that flickers around its base).
+  `npm test` checks the data format and the marker.
+
+**Measurements that rule** (recorded in a fight): the camera moves 1.6–8.2 from the center of the stage (4 on
+average, at ~0.8 high) and the fighters are ~1 tall; the floor of Lost Grave is flat up to ~11.6. That's why the
+barricades go at 9.4, the zombies at 10 and the lanes at 10.7 and 11.3.
+
+**Traps**
+- BMT textures don't go through `D3DXCreateTextureFromFileInMemoryEx`: the game decodes them and fills them with
+  `CreateTexture` + `LockRect`. Anything to look at in a texture goes in `textura_subir`.
+- The stage is drawn with vertex shaders (vs 2 the lit models, vs 4 the others): the hook takes position, normal and
+  uv from the attributes `dibujar()` sets up, not from the FVF.
+- A macro with `p++` as an argument evaluated it three times: the figures came out shifted and giant zombies showed up
+  next to the camera.
+- Turning the car with (x, y, z) -> (z, y, x) is a mirror and flips the faces: rotations only.
+- field.dat particles: 1 and 2 are dust bands (they hide the zombies), 3 snow, 4 a sunset glow, 5 the rocks floating
+  in the final stage. Undead has none.
+
+**Tested**: on the PC (60 fps) and on the emulator with the release APK (x86_64, 59.6–59.9 fps in the fight): wheel,
+thumbnail, name, a fight with the 46 zombies, shadows and fires; ( Random ) still picks among the 7 originals. On the
+emulator, delete the test `escritura` folder first: it saves the last stage, the wheel starts on another option and
+the key script lands somewhere else.
+
+**Not tested**: the phone (arm64; the A52 wasn't paired), going back to the wheel after a fight on Undead (the cap
+from 7 to 8), online play with stage 10 (both sides need this version) and story mode (it doesn't use the wheel).
+
+## 2026-11-06 — Eclipse Caldera: a stage with columns to jump on
+
+**Done**
+- **Stage 11, the tenth option of the wheel** (after Undead): a basalt island in a lava lake inside a caldera, under a
+  total eclipse (the sunset ring all around the horizon and a distant volcano in the caldera's breach, below the
+  eclipse). It has a fire crystal that spins and floats over the lava, flowing lava falls and lava lake, braziers,
+  obelisks, rising embers and the eclipse seal on the floor. It's all in `tools/escenario/caldera.mjs`, and `mods.mjs`
+  builds the three stages.
+- **Height differences**: 17 basalt columns (`dat/suelo.dat`, inside `vsobj2.dat`). There's a staircase of three on
+  each side on the x axis (6, 11, 16), another one to the north up to the summit (20; only reachable from the 10 one),
+  a 3.5 dais you walk up onto and loose pillars. The arena has a radius of 150.
+- **Hooks in the translator** (`analisis/ganchos.txt`, `recomp/emitir.mjs`): before the given instruction the
+  registers are dumped into the context, the runtime function is called and they are reloaded. The flags stay as they
+  were and the x87 stack already lives in the context. `traducir.mjs` stops if a hook doesn't land on a translated
+  instruction. There are 53, all from `runtime/escenarios.c`:
+  - the 41 comparisons of the height with 0 (or with 8) subtract the top underneath from ST0;
+  - the physics' fall rests on the top that was underneath when the frame started (so you don't go through it when
+    falling fast) and the "height = 0" ones leave it on that top;
+  - a column taller than the feet + 4 is a wall: it pushes the fighter out to the radius + 3. This happens after the
+    physics and after SetPosition (the push between fighters), and that's also where the arena's edge stops you;
+  - the shadow (`D3DXMatrixShadow` on y = 0) is cast on the top;
+  - the `mod_w*` models get the center (0, -0.5, 0) and stay fixed in the world;
+  - the wheel cursor on the way back: the cap goes back to the original one (7) and the hook takes 10 and 11 to their
+    options.
+- The wheel goes to 10 options (one byte changes in `parches.txt`; the cap patch is gone).
+- `d3d/animado.c`: figure types 3 (a current: the uv flows), 4 (spins and floats) and 5 (an ember that rises, sways
+  and dies out).
+- `npm test`: the format of `dat/suelo.dat` and the layout of the columns. All of them inside the arena and not
+  overlapping, the start clear, each staircase one jump at a time and the ones on the x axis crossing it.
+
+**How the physics was found** (per-frame memory dumps and a write watcher with read-only pages, both temporary and
+already removed):
+- **The fighter**: position at +A4 (x, y, z), velocity at +B0, acceleration at +C8 (gravity comes from +9C), dt 1/60
+  (0x54D8C0) and a ceiling of 250. `f_0046b600` is the physics: it integrates, does "y <= 0 → y = 0, vy = 0" at
+  0x46bafa, passes the position to the model (0x4059C0) and flags "in the air" (4C8 |= 4).
+- **The comparisons with 0.0** (0x54AAC4) are in `f_0046c170` (states), `f_00465e10`, `f_00465730` (which moves are
+  allowed on the ground or in the air, plus "height < 8") and `f_00461690` (dust when running).
+- **The center of the stage**: `f_00480520` computes the fighters' midpoint with y = 0 and `f_00498b60` hands it to
+  every stage model (with y - 0.5); it also scrolls the floor texture by field.dat's scale. The stage models go at
+  scale 20 (0x4988b9).
+- There's no double jump: the jump reaches 16.5 and moves ~14 forward.
+
+**Traps**
+- The fight starts on the x axis and at first moves along that line (down crouches, it doesn't sidestep). Later the
+  line turns and a long fight covers the whole arena. That's why the starting staircases have to cross the axis:
+  otherwise, jumping backwards you don't reach them.
+- The game copies the position into several objects (the model and others): the one that rules is the one at +A4.
+- The HUD covers whatever is more than ~8° above the horizon when the round starts: the eclipse and the crystal go
+  low.
+- The noise periods of repeating textures have to be integers (again): with 1/9 or 1/30 of 512 there were seams.
+
+**Tested**
+- **On the PC**:
+  - climbing the west staircase: it stops at the wall at x = -42 and lands on the 6 one and the 11 one;
+  - walking off the edge, and the shadow on the top;
+  - a long fight with random keys: 60 fps and it reaches the arena's edge at r = 150;
+  - Undead and an original stage are still as they were;
+  - going back to the wheel after a fight (pause → Exit) on Eclipse Caldera and on Undead: the cursor lands on its
+    option (what was left untested in the previous entry).
+- **On the emulator**, with the release APK (x86_64): the wheel, the fight at 59–60 fps and the same climb.
+
+**Not tested**: the phone (the A52 doesn't show up over wireless debugging), online play on stage 11 (both sides need
+this version), reaching the summit in a fight (the line has to point north) and the AI using the columns (it jumps,
+but doesn't go for them).
+
+## 2026-11-06 (2) — The three new stages together: the 11-slot wheel
+
+**What happened**: Sunlit Shore and the rooms (entries 6 to 8) were made in another copy of the repo and reached
+GitHub; Undead and Eclipse Caldera, in this one, without those commits. The two branches added stages to the wheel in
+different ways and used the same model and texture names (`mod_f100`…, `tex_f100`…).
+
+**Done**
+- **An 11-slot wheel** (`analisis/parches.txt`): Sunlit Shore's way stays (Random last, the "random" marker outside
+  the range of stages and the wheel textures with v divided by 1024 and 512), extended: slots 0-6 = stages 0-6, 7-9 =
+  stages 9-11 (beach, Undead, Caldera) and 10 = Random. The picked Random is -1, the marker saved in the game data
+  becomes 12 and random picks among the 10 stages (VS, arcade and COM vs COM). Going back to the wheel, stages 9-11
+  lead to their slot; 7, 8 and the marker, to Random.
+- The double-height textures with a marker (`textura_subir` and `u_esc` in the fragment shader) and the
+  `g_rueda_cursor` hook are gone: the patch covers them.
+- `tools/escenario/mods.mjs` builds everything: night, beach, Undead, Caldera and the lobby's letters
+  (`tools/sala/letras.mjs`). `rueda()` (`comun.mjs`) builds the 16 rows of thumbnails and names and each stage paints
+  its own. The new thumbnails take the alpha of the game's ones (rounded corners; before, Undead's and Caldera's were
+  opaque).
+- Undead moves to `mod_f140`-`mod_f149` and `tex_f140`-`tex_f155` (they clashed with the beach); `escribirMods`
+  stops if there are repeated names.
+- The translator stops if a C fragment from `parches.txt` or a hook doesn't land on a translated instruction.
+
+**Tested on the PC**: the whole wheel (the beach, Undead, Caldera and Random in order, with their names and
+thumbnails); fighting on all three; Random (it picked Caldera, with its columns); Outskirt Hill at night; going back
+to the wheel from each one (pause → Exit → character select → wheel: the cursor stays on the stage played); the rooms
+lobby. `npm test` (stages, patches and the rooms server).
+
+**Tested on the emulator**, with the release APK (x86_64): the wheel and fighting on all three; Undead and Caldera at
+60 fps, the beach at 51–53 (on the A52 it ran at 60).
+
+**Not tested**: the phone (the A52 wasn't connected) and online play on stages 9-11 (both sides need this version).
+
+<!-- i18n source=ESTADO.md sha256=b9ce7b0197ce -->

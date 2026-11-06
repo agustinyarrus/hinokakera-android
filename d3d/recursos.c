@@ -179,7 +179,7 @@ uint32_t recurso_release(Recurso *r) {
   switch (r->tipo) {
     case R_TEXTURA: textura_borrar((Textura *)r); break;
     case R_SUPERFICIE: if (disp && (Superficie *)r != disp->backbuffer && (Superficie *)r != disp->prof_auto) superficie_borrar((Superficie *)r); break;
-    case R_VB: case R_IB: heap_free(0, ((Buffer *)r)->va); com_borrar(r->obj); free(r); break;
+    case R_VB: case R_IB: animado_soltar((Buffer *)r); heap_free(0, ((Buffer *)r)->va); com_borrar(r->obj); free(r); break;
     default: com_borrar(r->obj); free(r); break; // shaders, declaraciones y consultas
   }
   return 0;
@@ -316,6 +316,7 @@ API(IB_GetType) { VOLVER(1, 7); }
 API(B_Lock) {
   Buffer *b = com_host(ARG(0));
   if (!b || ARG(1) > b->tam) VOLVER(5, D3DERR_INVALIDCALL);
+  animado_soltar(b); // el contenido puede cambiar: se vuelve a mirar en el próximo dibujo
   M32(ARG(3)) = b->va + ARG(1);
   VOLVER(5, 0);
 }
