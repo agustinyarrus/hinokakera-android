@@ -1,3 +1,5 @@
+<p align="right"><sub><a href="PLAN.en.md">English</a> · <b>Español</b></sub></p>
+
 # Hinokakera Chaotic Eclipse → Android
 
 Objetivo: el juego original (v1.01, `hinokakera.exe` sha256 `d9aea156…c8ab`) en Android, idéntico al original.

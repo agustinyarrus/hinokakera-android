@@ -1,3 +1,5 @@
+<p align="right"><sub><a href="ESTADO.en.md">English</a> · <b>Español</b></sub></p>
+
 # Estado (bitácora)
 
 ## 2026-10-23 — el exe original corre traducido y la pantalla de título sale igual
